@@ -1,0 +1,105 @@
+%%% @author Khashayar
+%%% @copyright (C) 2013, Khashayar
+%%% @doc
+%%%
+%%% @end
+%%% Created : 24 Jul 2013 by Khashayar
+
+-module(erproject_funs).
+
+%-export([read_web/2,convert_date/1, extract/1]).
+
+-compile(export_all).
+
+-include("records.hrl").
+%% Testing materials
+
+%%%-------------------------------------------------------------------
+%%% @doc
+%%%     Attempts to fetch and read a document from URL
+
+%%% @end
+
+%%TODO add checker for header
+read_web({ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
+    parse(mochijson:decode(Body));
+%    {success,{Headers,Body}};
+read_web({error,no_scheme})->
+    {error,broken_html};
+read_web({error,{failed_connect,_}})->
+    {error,connection_failed}; % broken link
+read_web({error,{ehostdown,_}})->
+    {error,host_is_down};
+read_web({error,{ehostunreach,_}})->
+    {error,host_unreachable};
+read_web({error,{etimedout,_}})->
+    {error,connection_timed_out};
+read_web({error,{ebadrqc,_}})->
+    {error,bad_request_code};
+read_web({error,{ecomm,_}})->
+    {error, communication_error};
+read_web({error,{econnrefused,_}})->
+    {error, connection_refused};
+read_web({error,{enetdown,_}})->
+    {error, network_down};
+read_web({error,{enetunreach,_}})->
+    {error, network_unreachable};
+read_web(Reason) ->
+        {error,Reason}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+read_web(default,Src) ->
+    ssl:start(),
+    inets:start(),
+    read_web(httpc:request(get, 
+			   {Src, [{"User-Agent","Jable"},
+				  {"Accept","application/vnd.github.preview"}
+				 ]}, 
+			   [], [])).
+
+
+
+parse({struct,[{_,_X},{_,{array, List}}]}) ->
+    List;
+parse(_) ->
+    {error,json_failed}.
+
+extract({struct, List}) ->
+    #git{id = proplists:get_value("id",List),
+	 name = proplists:get_value("name",List),
+	 full_name = proplists:get_value("full_name",List),
+	 owner = extract_owner(proplists:get_value("owner",List)),
+	 html_url = proplists:get_value("html_url",List),
+	 description = proplists:get_value("description",List),
+	 languages = proplists:get_value("language",List),
+	 created_at = proplists:get_value("created_at",List),
+	 updated_at = proplists:get_value("updated_at",List),
+	 pushed_at = proplists:get_value("pushed_at",List),
+	 watchers = proplists:get_value("watchers",List),
+	 open_issues = proplists:get_value("open_issues",List),
+	 forks = proplists:get_value("forks",List)}.
+
+extract_owner({struct, List}) ->
+    #owner{login = proplists:get_value("login",List),
+	   id = proplists:get_value("id",List),
+	   avatar_url = proplists:get_value("avatar_url",List),
+	   url = proplists:get_value("url",List)}.
+
+
+date_gen({{Year,Month,_},_}) ->
+    date_gen(2010,1,Year,Month,["<2010"]).
+
+date_gen(Y,M,Y,M,Buff)->
+    Buff ++ [">"++date_format(Y,M)];
+date_gen(Y,12,TY,TM,Buff) ->
+    date_gen(Y+1,1,TY,TM,Buff ++ 
+		 [date_format(Y,12)++".."++date_format(Y+1,1)]);
+date_gen(Y,M,TY,TM,Buff) ->
+    date_gen(Y,M+1,TY,TM,Buff ++ 
+		 [date_format(Y,M)++".."++date_format(Y,M+1)]).
+
+
+
+date_format(Y,M) when M < 10->
+    integer_to_list(Y)++"-"++integer_to_list(0)++integer_to_list(M);
+date_format(Y,M) ->
+    integer_to_list(Y)++"-"++integer_to_list(M).
