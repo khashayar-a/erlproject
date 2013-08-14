@@ -2,7 +2,12 @@
 %%% @author Khashayar <khashayar@khashayar>
 %%% @copyright (C) 2013, Khashayar
 %%% @doc
-%%%
+%%%     This process will pars the a certain Source of project
+%%%     Parsing happens in 2 phases,
+%%%     First phase to grab the URL from web and find the next page
+%%%     After this depened on the situation the proper message is sent
+%%%     back to CUnit
+%%%     Second phase is parsing the data and translate it
 %%% @end
 %%% Created : 25 Jul 2013 by Khashayar <khashayar@khashayar>
 %%%-------------------------------------------------------------------
@@ -115,10 +120,8 @@ crawl(bitbucket, Url) ->
 	    Links = erlproject_funs:get_value([Html], "a", []),
 	    case erlproject_funs:grab_next(bitbucket, Links) of
 		last ->
-%		    io:format("Last ~p~n",[[]]);
 		    gen_server:cast(erlproject_cunit, last);
 		Next ->
-%		    io:format("Next ~p~n",[Next])
 		    gen_server:cast(erlproject_cunit, 
 				    {next, {bitbucket,Next}})
 	    end,
@@ -146,8 +149,8 @@ parse(git, List) ->
 					   ++ Auth ++ "&per_page=3",
 		   gen_server:cast(erlproject_cunit, 
 				   {language, {git_language, Languages}}),
-%		   gen_server:cast(erlproject_cunit, 
-%				   {commit, {git_commit, Commits}}),
+		   gen_server:cast(erlproject_cunit, 
+				   {commit, {git_commit, Commits}}),
 		   gen_server:cast(erlproject_db,{write, git,  X}) 
 	   end,
     lists:foreach(Cast, Res);
@@ -159,22 +162,6 @@ parse(git_commit, List) ->
     Res = lists:map(Extract, List),
     commiter(Res);
 
-%    A = hd(Res),
-%    Url =  A#commit.url,
-%    L = string:tokens(Url, "/"),
-%    Name = lists:nth(3,L) ++ "/" ++ lists:nth(4,L),
-%    Delete = gen_server:call(erlproject_db, {delete, commit, Name}),
-%    case Delete of
-%	ok ->
-%	    Cast = fun(X) ->
-%			   gen_server:cast(erlproject_db, 
-%					   {write, git_commit, X})
-%		   end,
-%	    lists:foreach(Cast, Res);
-%	error ->
-%	    error
-%    end;
-	
 parse(google,Html) ->
     T = erlproject_funs:get_value([Html], "table", []),
     Extract = fun(X) -> 
@@ -190,8 +177,8 @@ parse(google,Html) ->
 					   {write, google,  Elem}) 
 		   end
 	   end,
-    %test(Res,0),
     lists:foreach(Cast, Res);
+
 parse(sourceforge, Links) ->
     Projects = erlproject_funs:get_content(Links,
 					   {"class" ,"project-icon"},
@@ -206,6 +193,7 @@ parse(sourceforge, Links) ->
 		    erlproject_parser:start({sfapi,X})
 	    end,
     lists:foreach(Spawn, Res);
+
 parse(sfapi,Body) ->
     case erlproject_funs:extract(sfapi, mochijson:decode(Body)) of
 	Data = #git{} ->
@@ -215,6 +203,7 @@ parse(sfapi,Body) ->
 				      {reason,Reason}])	   
 
     end;
+
 parse(bitbucket, Links) ->
     Projects = erlproject_funs:get_content(Links,
 					   {"class" ,"avatar-link"},
@@ -228,6 +217,7 @@ parse(bitbucket, Links) ->
 		    erlproject_parser:start({bbapi,X})
 	    end,
     lists:foreach(Spawn, Res);
+
 parse(bbapi,Body) ->
     case erlproject_funs:extract(bbapi, mochijson:decode(Body)) of
 	Data = #git{} ->
@@ -250,13 +240,5 @@ commiter([H|T],N) ->
 		    {write, git_commit, {N,H}}),
     commiter(T,N+1).
 	
-
-test([],S) ->
-    io:format(" ~p Messages Sent ~n" , [S]);
-test([not_valid|T],S) ->
-    test(T,S);
-test([H|T],S) ->
-    %io:format(" ~p~n" , [H]),
-    test(T,S+1).
 
 

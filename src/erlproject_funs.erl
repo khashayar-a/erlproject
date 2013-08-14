@@ -1,7 +1,7 @@
 %%% @author Khashayar
 %%% @copyright (C) 2013, Khashayar
 %%% @doc
-%%%
+%%%     Pool of functions needed for parsing 
 %%% @end
 %%% Created : 24 Jul 2013 by Khashayar
 
@@ -130,11 +130,9 @@ extract(git_commit, {struct, List}) ->
 	    url = proplists:get_value("html_url", List),
 	    message = proplists:get_value("message", Commit)};
 extract(google ,{_, _, [{<<"tr">>,_,[{<<"td">>,_,_},{<<"td">>,_,Data}]}]}) ->
-%    io:format("~p~n*~n",[Data]),
     extract(google, Data);
 extract(google , [Name_Link, _ , Star_Data , _ , DescT|_]) ->
     [{_,Attrs,Val}] = get_value([Name_Link], "a", []),
-    %io:format("~p~n*~n~n",[Star_Data]),
     case Star_Data of
 	{_,_,[Updated,{_,_,[Stars]}]} ->
 	    Desc = DescT;
@@ -208,8 +206,6 @@ extract_owner({struct, List}) ->
 %%% @end
 
 
-%source_gen(_) ->
-%    [bitbucket,google,sourceforge];
 source_gen({{Year,Month,_},_}) ->
     source_gen(2010,1,Year,Month,["<2010"]).
 source_gen(Y,M,Y,M,Buff)->
@@ -368,14 +364,11 @@ translate_update(Date)->
 		    {{Year,month_num(Month),Day},{0,0,0}};
 		_Reason ->
 		    {{1970,1,1},{0,0,0}}
-%		    {error, {Date,Reason}}
 	    end;
 	{more, _RestFormat, _Nchars, _InputStack} ->
 	    {{1970,1,1},{0,0,0}};
-%	    {error, {Date,not_enough}};
 	{error, _Reason}  ->
 	    {{1970,1,1},{0,0,0}}
-%	    {error, {Date,Reason}}
     end.
 
 

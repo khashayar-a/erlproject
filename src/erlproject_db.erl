@@ -2,7 +2,9 @@
 %%% @author Khashayar 
 %%% @copyright (C) 2013, Khashayar
 %%% @doc
-%%%
+%%%     Grabbing Data via message from the parser
+%%%     Generating the proper sql query 
+%%%     Executing the query via mysql server
 %%% @end
 %%% Created : 26 Jul 2013 by Khashayar 
 %%%-------------------------------------------------------------------
@@ -33,18 +35,6 @@ init([]) ->
 
 %%--------------------------------------------------------------------
 
-handle_call({delete, commit, Name}, From, State) ->
-    Query = gen_query(git_commit_delete, Name),
-    Res = query_function(write,Query),
-    case Res of
-	ok ->
-	    %io:format("Query submitted ~p~n", [Query]),
-	    {reply, ok, State};
-	{error,Reason} ->
-	    %io:format("Error ~p~n" , [Reason]),
-	    gen_server:cast(erlproject_cunit,{database,Reason}),
-	    {reply, error, State}
-    end;
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -85,23 +75,17 @@ handle_cast({write, git_commit, Data}, State) ->
     Res = query_function(write,Query),
     case Res of
 	ok ->
-	    %io:format("Query submitted ~p~n", [Query]),
 	    {noreply, State};
 	{error,Reason} ->
-	    %io:format("Error ~p~n" , [Reason]),
 	    gen_server:cast(erlproject_cunit,{database,Reason}),
 	    {noreply, State}
     end;
 
 handle_cast({write, google, Data = #git{}}, State) ->
-%    io:format("Submitting~n" , []),
     Query = gen_query(google, Data),
-    %io:format("Query ~p~n" , [Query]),
     Res = query_function(write,Query),
-    %io:format("Res ~p~n" , [Res]),
     case Res of
 	ok ->
-	    %io:format("Submitting ~p~n" , [ok]),
 	    {noreply, State};
 	{error,Reason} ->
 	    gen_server:cast(erlproject_cunit,{database,Reason}),
@@ -112,7 +96,6 @@ handle_cast({write, sfapi, Data = #git{}}, State) ->
     Res = query_function(write,Query),
     case Res of
 	ok ->
-	    %io:format("Submitting ~p~n" , [ok]),
 	    {noreply, State};
 	{error,Reason} ->
 	    gen_server:cast(erlproject_cunit,{database,Reason}),
@@ -123,7 +106,6 @@ handle_cast({write, bbapi, Data = #git{}}, State) ->
     Res = query_function(write,Query),
     case Res of
 	ok ->
-	    %io:format("Submitting ~p~n" , [ok]),
 	    {noreply, State};
 	{error,Reason} ->
 	    gen_server:cast(erlproject_cunit,{database,Reason}),

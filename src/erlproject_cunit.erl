@@ -2,7 +2,8 @@
 %%% @author Khashayar
 %%% @copyright (C) 2013, Khashayar
 %%% @doc
-%%%
+%%%     This process is the core of the program
+%%%     It controlls the workflow and manages the process that need to start
 %%% @end
 %%% Created : 25 Jul 2013 by Khashayar
 %%%-------------------------------------------------------------------
@@ -42,7 +43,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({next, Url}, State) ->
     erlproject_parser:start(Url),
-    io:format("SPAWNing NExt ~p ~n",[Url]),
+%    io:format("SPAWNing NExt ~p ~n",[Url]),
     {noreply, State};
 handle_cast({language, Url}, State) ->
     erlproject_parser:start(Url),
@@ -50,26 +51,26 @@ handle_cast({language, Url}, State) ->
     {noreply, State};
 handle_cast({commit, Url}, State) ->
     erlproject_parser:start(Url),
-    io:format("SPAWNing Commit ~p ~n",[Url]),
+%    io:format("SPAWNing Commit ~p ~n",[Url]),
     {noreply, State};
 handle_cast(last, []) ->
     State = erlproject_funs:source_gen(calendar:universal_time()),
     io:format("Round Compelete ~n",[]),
     erlproject_parser:start(gen_url(hd(State))),
-    io:format("Spawn ~p ~n",[gen_url(hd(State))]),
+%    io:format("Spawn ~p ~n",[gen_url(hd(State))]),
     {noreply, tl(State)};
 handle_cast(last, State) ->
-    io:format("SPAWN Last~n",[]),
+%    io:format("SPAWN Last~n",[]),
     erlproject_parser:start(gen_url(hd(State))),
-    io:format("Spawn ~p ~n",[gen_url(hd(State))]),
+%    io:format("Spawn ~p ~n",[gen_url(hd(State))]),
     {noreply, tl(State)};
 handle_cast({database, Reason}, State) ->
-    io:format("Data Error ~p~n",[Reason]),
+%    io:format("Data Error ~p~n",[Reason]),
     error_logger:info_report(["Database",{reason,Reason}]),
     {noreply, State};
 handle_cast({wait, T, Url}, State) ->
     Now = epoch_now(),
-    io:format("Waiting ~p Secs ~n",[T-Now]),
+    io:format("Waiting ~p Secs from ~p ~n",[T-Now , calendar:local_time()]),
     timer:sleep( max(T - Now,0) * 1000),
 %    io:format("Re Spawning ~p ~n",[Url]),
     erlproject_parser:start(Url),
@@ -78,10 +79,10 @@ handle_cast({error,Reason},[]) ->
     State = erlproject_funs:source_gen(calendar:universal_time()),
     error_logger:info_report(["Unknown Error",{reason,Reason}]),
     erlproject_parser:start(gen_url(hd(State))),
-    io:format("Error ~p~n",[Reason]),
+%    io:format("Error ~p~n",[Reason]),
     {noreply, tl(State)};
 handle_cast({error,Reason},State) ->
-    io:format("Unknown Erorr ~p ~n",[Reason]),
+%    io:format("Unknown Erorr ~p ~n",[Reason]),
     erlproject_parser:start(gen_url(hd(State))),
     error_logger:info_report(["Unknown Error",{reason,Reason}]),
     {noreply, tl(State)};
