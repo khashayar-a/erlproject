@@ -209,7 +209,8 @@ extract_owner({struct, List}) ->
 source_gen({{Year,Month,_},_}) ->
     source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
 source_gen(Y,M,Y,M,Buff)->
-    Buff ++ [">"++date_format(Y,M), google,sourceforge, bitbucket];
+    Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}, 
+	     google,sourceforge, bitbucket];
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
 		 [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
