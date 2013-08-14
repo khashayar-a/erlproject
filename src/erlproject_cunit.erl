@@ -114,12 +114,19 @@ gen_url(google) ->
     {google,
      "https://code.google.com/hosting/search?"++
 	 "q=label%3Aerlang&filter=0&mode=&start=0"};
-gen_url(C) ->
+gen_url({l,C}) ->
     Auth = "&access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
     Page = "&page=1&per_page=100",
     Src = "https://api.github.com/search/repositories",
     Query = "?q=language:erlang+created:",
+    {git,Src ++ Query ++ C ++ Page ++ Auth};
+gen_url({s,C}) ->
+    Auth = "&access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
+    Page = "&page=1&per_page=100",
+    Src = "https://api.github.com/search/repositories",
+    Query = "?q=erlang+created:",
     {git,Src ++ Query ++ C ++ Page ++ Auth}.
+
 
 
 epoch_now() ->
