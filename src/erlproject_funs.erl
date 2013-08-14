@@ -212,7 +212,8 @@ source_gen(Y,M,Y,M,Buff)->
     Buff ++ [">"++date_format(Y,M), google,sourceforge, bitbucket];
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
-		 [date_format(Y,12)++".."++date_format(Y+1,1)]);
+		 [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
+		  {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
 source_gen(Y,M,TY,TM,Buff) ->
     source_gen(Y,M+1,TY,TM,Buff ++ 
 		   [{l,date_format(Y,M)++".."++date_format(Y,M+1)},
