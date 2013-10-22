@@ -14,6 +14,6 @@
 - endif.
 
 %% - define( Log(Msg,Parameters), error_logger:info_report([Msg,Parameters])).
-- define( Log(Msg,Parameters), ok).
+ - define( Log(Msg,Parameters), ok).
 
 -define(SOURCEFORGE_OVERLOAD, "Too many requests, please try again later.").

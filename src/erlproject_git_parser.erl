@@ -78,16 +78,18 @@ getInformation(From,[{Languages,Commits}|Tail]) ->
     ?Log("getInformation",{languages, Languages}),
     case read_language(Languages) of
         success -> case read_commits(Commits) of
-                       ok -> ok;
-                       error -> skip_commits;
+                       ok -> ok,
+                             getInformation(From,Tail);
+                       error -> skip_commits,
+                                getInformation(From,Tail);
                        Limit -> wait(Limit),
                                 getInformation(From,[{Languages,Commits}|Tail])
                    end;
-        error -> skip_language;
+        error -> skip_language,
+                     getInformation(From,Tail);
         Limit -> wait(Limit),
                  getInformation(From,[{Languages,Commits}|Tail])
-    end,
-    getInformation(From,Tail).
+    end.
 
 
 read_language(Languages) ->
@@ -133,14 +135,9 @@ read_commits(Commits) ->
 
 wait(T) ->
     Now = erlproject_cunit:epoch_now(),
-    %% io:format("Waiting ~p Secs (~p Mins) from ~p (git_parser) ~n ",
-    %%           [T-Now ,(T-Now)/60, calendar:local_time()]),
-    %% error_logger:info_report(["Waiting",{sec, T-Now},{time,calendar:local_time()}]),
+    error_logger:info_report(["Waiting",{min, (T-Now)/60},{time,calendar:local_time()}]),
     if T>Now ->
             timer:sleep( max(T - Now,1) * 1000);
-       %% io:format("Time is up, let's continue ~p ~n",[calendar:local_time()]),
-       %% error_logger:info_report
-       %%  ("Time is up, let's continue ~p ~n",{time,calendar:local_time()});
        true -> ok
     end.
 

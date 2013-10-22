@@ -134,11 +134,11 @@ check(Header) ->
 	    ok;
 	"403 Forbidden" ->
 	    T = proplists:get_value("x-ratelimit-reset",Header),
-            ?L("check(Header) resulted T",{reason,T}),
 	    Limit = list_to_integer(T),
             Now = erlproject_cunit:epoch_now(),
             if Limit < Now  -> error;
                true ->
+                   %%  error_logger:info_report(["check(Header) resulted T",{"x-ratelimit-reset",T},{header, Header}]),
                     Limit
             end;
 	_ ->
