@@ -20,65 +20,70 @@
 
 read_web(git,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
     case check(Headers) of
-	ok ->
-	    case parse(mochijson:decode(Body)) of
-		no_result ->
-		    {success, last, []};
-		Res ->
-		    case proplists:get_value("link",Headers) of
-			undefined ->
-			    {success, last, Res};
-			Links ->
-			    {success, grab_next(git, Links), Res}
-		    end
-	    end;
-	error ->
-	    {error,broken_html};
-	Limit ->
-            ?L("check(Headers) returned limit",{reason,calendar:gregorian_seconds_to_datetime(Limit)}),
-            {limit, Limit}
+	ok -> try parse(mochijson:decode(Body)) of
+                    no_result ->
+                              {success, last, []};
+                     Res ->
+                              case proplists:get_value("link",Headers) of
+                                  undefined ->
+                                      {success, last, Res};
+                                  Links ->
+                                      {success, grab_next(git, Links), Res}
+                              end
+              catch
+                  exit:_Exit ->
+                                  {error,_Exit}
+                end;
+     error ->
+                      {error,broken_html};
+     Limit ->
+                      %% error_logger:info_report(["check(Headers) returned limit",{reason,calendar:gregorian_seconds_to_datetime(Limit)}]),
+                      {limit, Limit}
+
+
     end;
 
 read_web(default,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
     %% ?L("read_web(default,ok)",{reason,headers}),
     {success,{Headers,Body}};    
 read_web(_,{error,socket_closed_remotely})->
-    ?L("read_web(error,socket_closed_remotely)",{reason,socket_closed_remotely}),
+    ?Log("read_web(error,socket_closed_remotely)", {reason,socket_closed_remotely}),
     {error,socket_closed_remotely};
 read_web(_,{error,no_scheme})->
-    ?L("read_web(error,no_scheme)",{reason,no_scheme}),
+    ?Log("read_web(error,no_scheme)",{reason,no_scheme}),
     {error,broken_html};
 read_web(_,{error,{failed_connect,_}})->
-    ?L("read_web(error,failed_connect)",{reason,connection_failed}),
+    ?Log("read_web(error,failed_connect)",{reason,connection_failed}),
     {error,connection_failed}; % broken link
 read_web(_,{error,{ehostdown,_}})->
-    ?L("read_web(error,ehostdown)",{reason,host_is_down}),
+    ?Log("read_web(error,ehostdown)",{reason,host_is_down}),
     {error,host_is_down};
 read_web(_,{error,{ehostunreach,_}})->
-    ?L("read_web(error,ehostunreach)",{reason,host_unreachable}),
+    ?Log("read_web(error,ehostunreach)",{reason,host_unreachable}),
     {error,host_unreachable};
 read_web(_,{error,{etimedout,_}})->
-    ?L("read_web(error,etimedout)",{reason,connection_timed_out}),
+    ?Log("read_web(error,etimedout)",{reason,connection_timed_out}),
     {error,connection_timed_out};
 read_web(_,{error,timeout})->
-    ?L("read_web(error,timeout)",{reason,connection_timed_out}),
+    ?Log("read_web(error,timeout)",{reason,connection_timed_out}),
     {error,connection_timed_out};
 read_web(_,{error,{ebadrqc,_}})->
-    ?L("read_web(error,ebadrqc)",{reason,bad_request_code}),
+    ?Log("read_web(error,ebadrqc)",{reason,bad_request_code}),
     {error,bad_request_code};
 read_web(_,{error,{ecomm,_}})->
-    ?L("read_web(error,ecomm)",{reason,communication_error}),
+    ?Log("read_web(error,ecomm)",{reason,communication_error}),
     {error, communication_error};
 read_web(_,{error,{econnrefused,_}})->
-    ?L("read_web(error,econnrefused)",{reason,connection_refused}),
+    ?Log("read_web(error,econnrefused)",{reason,connection_refused}),
     {error, connection_refused};
 read_web(_,{error,{enetdown,_}})->
-    ?L("read_web(error,enetdown)",{reason,network_down}),
+    ?Log("read_web(error,enetdown)",{reason,network_down}),
     {error, network_down};
 read_web(_,{error,{enetunreach,_}})->
-    ?L("read_web(error,enetunreach)",{reason,network_unreachable}),
+    ?Log("read_web(error,enetunreach)",{reason,network_unreachable}),
     {error, network_unreachable};
 read_web(git,Src) ->
+    ?Log("read_web(git,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
     inets:start(),
     {A,Code} = try
@@ -93,13 +98,13 @@ read_web(git,Src) ->
                    error:R -> {{error,R},error}
                end,
     if not(Code == ok) ->
-            ?L("read_web(git,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
+            ?Log("read_web(git,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
        true -> ok
     end,
     read_web(git,A);
 
 read_web(default,Src) ->
-    ?L("read_web(git,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
+    ?Log("read_web(default,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
     inets:start(),
     {A,Code} = try
@@ -114,15 +119,14 @@ read_web(default,Src) ->
                                error}
                end,
     if not(Code == ok) ->
-            ?L("read_web(default,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
+            ?Log("read_web(default,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
        true -> ok
     end,
     read_web(default,A);
 
 read_web(_,Reason) ->
-    ?L("read_web(_,Reason)",{reason,Reason}),
-                                                %        {error,Reason}.
-    {exit, Reason}.
+    ?Log("read_web(_,Reason)",{reason,Reason}),
+             {error,Reason}.
 
 check(Header) ->
     case proplists:get_value("status", Header) of
@@ -260,7 +264,7 @@ source_gen({{Year,Month,_},_}) ->
     source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
 source_gen(Y,M,Y,M,Buff)->
     Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}, 
-	     google,sourceforge,bitbucket];
+	     bitbucket,sourceforge,google];
 
 %% temporary fix to test exit erlproject_unit after the last item is parsed
 %% source_gen({{Year,Month,_},_}) ->
@@ -305,7 +309,7 @@ grab_next(git,Links) ->
     end;
 
 grab_next(google,[]) ->
-    ?L("grab_next(google)",{reason,last}),
+    ?Log("grab_next(google)",{reason,last}),
     last;
 grab_next(google,[{_,Attr,[<<"Next ">>|_]}|_T]) ->
     "https://code.google.com/hosting/" ++
@@ -314,7 +318,7 @@ grab_next(google,[_|T]) ->
     grab_next(google,T);
 
 grab_next(sf,[]) ->
-    ?L("grab_next(sf)",{reason,last}),
+    ?Log("grab_next(sf)",{reason,last}),
     last;
 grab_next(sf, [{_,Attr,[<<"Next">>|_]}|_T]) ->
     "http://sourceforge.net" ++
@@ -323,7 +327,7 @@ grab_next(sf, [_|T]) ->
     grab_next(sf, T);
 
 grab_next(bitbucket,[]) ->
-    ?L("grab_next(bitbucket)",{reason,last}),
+    ?Log("grab_next(bitbucket)",{reason,last}),
     last;
 grab_next(bitbucket, [{_,Attr,[<<"Next">>|_]}|_T]) ->
     case bitstring_to_list(proplists:get_value(<<"href">>,Attr)) of

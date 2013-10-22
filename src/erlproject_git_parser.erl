@@ -20,12 +20,12 @@ init({From, Url}) ->
     crawl(From,{git,Url}).
 
 crawl(From,{git, Url}) ->
-    %%    ?L("erlproject_git_parser:crawl, Url= ",{reason, Url}),
+    %% error_logger:info_report(["crawl git", {url, Url}]),
+
     case erlproject_funs:read_web(git,Url) of
 	{limit, T} ->
             wait(T),
             crawl(From,{git, Url});
-        %% gen_server:cast(erlproject_cunit, {wait, T, {git,Url}}); 
 	{success, last, List} ->
             ParsedList = parse(git,List),
             getInformation(From, ParsedList),
@@ -72,9 +72,10 @@ getInformation(_From, []) ->
     ok;
 getInformation(From,[{[],_}|Tail]) ->
     %% skip language and commit data as no update has happened after our last update
+    ?Log("getInformation",{languages, []}),
     getInformation(From,Tail);
 getInformation(From,[{Languages,Commits}|Tail]) ->
-    %% ?L("getInformation",{languages, Languages}),
+    ?Log("getInformation",{languages, Languages}),
     case read_language(Languages) of
         success -> case read_commits(Commits) of
                        ok -> ok;
@@ -111,7 +112,7 @@ read_language(Languages) ->
     end.
 
 read_commits(Commits) ->
-    %% ?L("commits",{commits, Commits}),
+    ?Log("commits",{commits, Commits}),
     case erlproject_funs:read_web(default,Commits) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 

@@ -46,8 +46,7 @@ crawl(git, Url) ->
 %%     end;
 
 crawl(git_language, Url) ->
-    ?L(" erlproject_parser:crawl, git_language",
-       {url, Url}),
+    %%   error_logger:info_report(["crawl git_language", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 
@@ -67,7 +66,7 @@ crawl(git_language, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;    
 crawl(git_commit, Url) ->
-    ?L("erlproject_parser:crawl, git_commit, Url = ",{reason, Url}),
+    %%   error_logger:info_report(["crawl git_commit", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 
@@ -85,7 +84,8 @@ crawl(git_commit, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;    
 crawl(google, Url) ->
-    ?L("erlproject_parser:crawl, google, Url = ",{reason, Url}),
+    %%   error_logger:info_report(["crawl google", {url, Url}]),
+
     case erlproject_funs:read_web(default,Url) of
 	{success,{_Headers,Body}} ->
 	    Html = mochiweb_html:parse(Body),
@@ -102,7 +102,7 @@ crawl(google, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;
 crawl(sourceforge, Url) ->
-    ?L("erlproject_parser:crawl, sourceforge, Url = ",{reason, Url}),
+    %% error_logger:info_report(["crawl sourceforge", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
         {success,{_Headers, ?SOURCEFORGE_OVERLOAD}} ->
             %% "Too many requests, please try again later."
@@ -125,8 +125,7 @@ crawl(sourceforge, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;
 crawl(sfapi,Url) ->
-    ?L("erlproject_parser:crawl, sfapi, Url = ",{reason, Url}),
-    error_logger:info_report("erlproject_parser:crawl, sfapi, Url = ",{reason, Url}),
+    %%  error_logger:info_report(["crawl sfapi", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
         {success,{_Headers, ?SOURCEFORGE_OVERLOAD}} ->
             %% "Too many requests, please try again later."
@@ -139,7 +138,7 @@ crawl(sfapi,Url) ->
             gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;
 crawl(bitbucket, Url) ->
-    ?L("erlproject_parser:crawl, bitbucket, Url = ",{reason, Url}),
+    %%  error_logger:info_report(["crawl bitbucket", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
 	{success,{_Headers,Body}} ->
 	    Html = mochiweb_html:parse(Body),
@@ -156,7 +155,7 @@ crawl(bitbucket, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;
 crawl(bbapi,Url) ->
-    ?L("erlproject_parser:crawl, bbapi, Url = ",[{reason, Url}]),
+    %%  error_logger:info_report(["crawl bbapi", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
         {success,{_Headers,Body}} ->
             parse(bbapi,Body);
@@ -274,5 +273,6 @@ commiter([H|T],N) ->
 crawl_sfapi_projects([]) -> ok;
 crawl_sfapi_projects([X|Rem]) ->
     erlproject_parser:crawl(sfapi,X),
-                                                % there is no need for a new project, just crawl it
+                            %% there is no need for a new project, 
+                            %% just crawl it
     crawl_sfapi_projects(Rem).

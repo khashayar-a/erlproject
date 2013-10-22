@@ -7,11 +7,13 @@
 
 -record(commit, {sha, author, date, url, message}).
 
-- ifdef(debug).
+ - ifdef(debug).
 - define(L(Msg,Prameters), error_logger:info_report([Msg,Parameters])).
 - else.
 - define(L(Msg,Prameters), ok).
 - endif.
 
+%% - define( Log(Msg,Parameters), error_logger:info_report([Msg,Parameters])).
+- define( Log(Msg,Parameters), ok).
 
 -define(SOURCEFORGE_OVERLOAD, "Too many requests, please try again later.").

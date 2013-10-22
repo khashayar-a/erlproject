@@ -31,7 +31,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 
-%%--------------------------------------------------------------------
+%%-------------------------------------------------------------------
 init([]) ->
     State = erlproject_funs:source_gen(calendar:universal_time()),
     erlproject_parser:start(gen_url(hd(State))),
@@ -68,7 +68,7 @@ handle_cast(last, []) ->
     erlproject_parser:start(gen_url(hd(State))),
     {noreply, tl(State)};
 handle_cast(last, State) ->
-    error_logger:info_report(["last received",{reason,hd(State)}]),
+    %% error_logger:info_report(["last received",{reason,hd(State)}]),
     erlproject_parser:start(gen_url(hd(State))),
     {noreply, tl(State)};
 handle_cast({database, Reason}, State) ->
@@ -76,7 +76,7 @@ handle_cast({database, Reason}, State) ->
     {noreply, State};
 handle_cast({wait, T, Url}, State) ->
     Now = epoch_now(),
-    error_logger:info_report(["Waiting",{sec, T-Now},{time,calendar:local_time()}]),
+    ?Log("Waiting",[{sec, T-Now},{time,calendar:local_time()}]),
     if T>Now ->
             timer:sleep( max(T - Now,1) * 1000);
        true -> ok

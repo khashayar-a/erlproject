@@ -58,6 +58,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 
 handle_cast({write, git, Data = #git{}}, State) ->
+    fix_clarity(Data), 
     case gen_query(git, Data) of
         {Query_Git, Query_Owner} ->
 
@@ -188,9 +189,48 @@ query_function(get, Q) ->
     catch
 	exit:_Exit ->
 	    {error, no_connection}
-    end.                    
+    end;                    
+query_function(select,Q) ->
+   try mysql:fetch(p1, Q) of
+	Result ->
+            case Result of
+                {R,{_,_,Res,_,_,_,_,_}} -> 
+                    case R of
+                        data ->
+                            {ok, Res};
+                        error ->
+                            {error, {sql_syntax,Q}};
+                        _ ->
+                            {error, R}
+                    end;
+                {error,R2} ->
+                    {error,R2}
+	    end
+    catch
+	exit:_Exit ->
+	    {error, no_connection}
+    end;
 
-
+query_function(delete,Q) ->
+   try mysql:fetch(p1, Q) of
+	Result ->
+            case Result of
+                {R,{_,_,Re_,_,_,_,_,_}} -> 
+                    case R of
+                        updated ->
+                            ok;
+                        error ->
+                            {error, {sql_syntax,Q}};
+                        _ ->
+                            {error, R}
+                    end;
+                {error,R2} ->
+                    {error,R2}
+	    end
+    catch
+	exit:_Exit ->
+	    {error, no_connection}
+    end.
 
 gen_query(git, Data = #git{}) ->
     try
@@ -267,6 +307,17 @@ gen_query(git_commit_delete, Name) ->
     "delete from erlproject_commits where id = " ++
 	"(select id from erlproject_git where full_name = '"++
 	Name ++ "')";
+
+gen_query(git_project_delete, Id) ->
+    "delete from erlproject_git where id = '" ++ integer_to_list(Id) ++ "'"; 
+
+
+gen_query(git_clarity, Data= #git{}) ->
+    Url =  Data#git.html_url,
+    L = string:tokens(Url, "/"),
+    Name = lists:nth(3,L) ++ "/" ++ lists:nth(4,L),
+    "select id from erlproject_git where full_name = '" ++
+	Name ++ "'";   
 
 gen_query(google, Data = #git{}) ->
     "insert into erlproject_git " ++
@@ -371,4 +422,35 @@ fix([H|T], Buff) when H < 127->
 fix([_|T], Buff) ->
     fix(T, Buff).
 
+
+fix_clarity(Data= #git{}) ->
+    %% check that id in the git project is individual
+    %% there can be problems with github to return different id?
+    %% Url =  Data#git.html_url,
+    %% L = string:tokens(Url, "/"),
+    %% Name = lists:nth(3,L) ++ "/" ++ lists:nth(4,L),
+    Q = gen_query(git_clarity, Data),
+    case query_function(select,Q) of
+        {ok,[]} ->
+            %% ?Log("fix_clarity",{url,Data#git.html_url}),
+            ok;
+        {ok,List} ->
+            %% ?Log("fix_clarity",{ids,List}),
+
+            case length(lists:flatten(List)) of 
+                1 -> ok;
+                _ ->
+                    % more than 1 git project with the same name - let's  them
+                    error_logger:info_report(["More than 1 git_project",
+                                              {url,Data#git.html_url},{ids,List}]),
+                    remove_projects(lists:flatten(List))
+            end
+    end.
+    
+remove_projects([]) ->
+    ok;
+remove_projects([L|H]) ->
+    Q = gen_query(git_project_delete, L),
+    query_function(delete,Q),
+    remove_projects(H).
 
