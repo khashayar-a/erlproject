@@ -19,6 +19,7 @@ start(normal, _Args) ->
     erlproject_supervisor:start_link().
 
 %%--------------------------------------------------------------------
-stop(_State) ->
+stop(State) ->
+    error_logger:info_report(["erlproject_supervisor stopped",{state, State}]),
     ok.
 

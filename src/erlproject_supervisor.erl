@@ -26,6 +26,7 @@ start_link() ->
 init([]) ->
     RestartStrategy = one_for_one,
     MaxRestarts = 1000,
+
     MaxSecondsBetweenRestarts = 3600,
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
@@ -35,14 +36,15 @@ init([]) ->
     Type = worker,
 
     CUnit = {erlproject_cunit , {erlproject_cunit , start_link , []},
-	       Restart , Shutdown , worker, [erlproject_cunit]},
+             Restart , Shutdown , worker, [erlproject_cunit]},
     DB = {erlproject_db , {erlproject_db , start_link , []},
-		 Restart , Shutdown , worker , [erlproject_db]},
+          Restart , Shutdown , worker , [erlproject_db]},
+
     My_Sql = {mysql , {mysql , 
-			      start_link , 
-			      [p1, "db.student.chalmers.se", 
-			       3306,"abdoli", "kgcH8v7c", "abdoli"
-			      ]
+                       start_link , 
+                       [p1, "127.0.0.1", 
+                        3306,"evabihari", "ethebi1", "erlproject"
+                       ]
 		      },
 	      Restart , Shutdown , worker, [mysql]},
     {ok, {SupFlags, [My_Sql,DB,CUnit]}}.
