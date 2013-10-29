@@ -7,12 +7,11 @@
 
 -module(erlproject_funs).
 
-%-export([read_web/2,convert_date/1, extract/1]).
+                                                %-export([read_web/2,convert_date/1, extract/1]).
 
 -compile(export_all).
 
 -include("records.hrl").
-
 
 %%%-------------------------------------------------------------------
 %%% @doc
@@ -21,63 +20,113 @@
 
 read_web(git,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
     case check(Headers) of
-	ok ->
-	    case parse(mochijson:decode(Body)) of
-		no_result ->
-		    {success, last, []};
-		Res ->
-		    case proplists:get_value("link",Headers) of
-			undefined ->
-			    {success, last, Res};
-			Links ->
-			    {success, grab_next(git, Links), Res}
-		    end
-	    end;
-	error ->
-	    {error,broken_html};
-	Limit ->
-	    {limit, Limit}
+	ok -> try parse(mochijson:decode(Body)) of
+                    no_result ->
+                              {success, last, []};
+                     Res ->
+                              case proplists:get_value("link",Headers) of
+                                  undefined ->
+                                      {success, last, Res};
+                                  Links ->
+                                      {success, grab_next(git, Links), Res}
+                              end
+              catch
+                  exit:_Exit ->
+                                  {error,_Exit}
+                end;
+     error ->
+                      {error,broken_html};
+     Limit ->
+                      %% error_logger:info_report(["check(Headers) returned limit",{reason,calendar:gregorian_seconds_to_datetime(Limit)}]),
+                      {limit, Limit}
+
+
     end;
 
 read_web(default,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
+    %% ?L("read_web(default,ok)",{reason,headers}),
     {success,{Headers,Body}};    
+read_web(_,{error,socket_closed_remotely})->
+    ?Log("read_web(error,socket_closed_remotely)", {reason,socket_closed_remotely}),
+    {error,socket_closed_remotely};
 read_web(_,{error,no_scheme})->
+    ?Log("read_web(error,no_scheme)",{reason,no_scheme}),
     {error,broken_html};
 read_web(_,{error,{failed_connect,_}})->
+    ?Log("read_web(error,failed_connect)",{reason,connection_failed}),
     {error,connection_failed}; % broken link
 read_web(_,{error,{ehostdown,_}})->
+    ?Log("read_web(error,ehostdown)",{reason,host_is_down}),
     {error,host_is_down};
 read_web(_,{error,{ehostunreach,_}})->
+    ?Log("read_web(error,ehostunreach)",{reason,host_unreachable}),
     {error,host_unreachable};
 read_web(_,{error,{etimedout,_}})->
+    ?Log("read_web(error,etimedout)",{reason,connection_timed_out}),
+    {error,connection_timed_out};
+read_web(_,{error,timeout})->
+    ?Log("read_web(error,timeout)",{reason,connection_timed_out}),
     {error,connection_timed_out};
 read_web(_,{error,{ebadrqc,_}})->
+    ?Log("read_web(error,ebadrqc)",{reason,bad_request_code}),
     {error,bad_request_code};
 read_web(_,{error,{ecomm,_}})->
+    ?Log("read_web(error,ecomm)",{reason,communication_error}),
     {error, communication_error};
 read_web(_,{error,{econnrefused,_}})->
+    ?Log("read_web(error,econnrefused)",{reason,connection_refused}),
     {error, connection_refused};
 read_web(_,{error,{enetdown,_}})->
+    ?Log("read_web(error,enetdown)",{reason,network_down}),
     {error, network_down};
 read_web(_,{error,{enetunreach,_}})->
+    ?Log("read_web(error,enetunreach)",{reason,network_unreachable}),
     {error, network_unreachable};
 read_web(git,Src) ->
+    ?Log("read_web(git,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
     inets:start(),
-    read_web(git,httpc:request(get, 
-			   {Src, [{"User-Agent","Jable"},
-				  {"Accept","application/vnd.github.preview"}
-				 ]}, 
-			   [], []));
+    {A,Code} = try
+                   httpc:request(get, 
+                                 {Src, [{"User-Agent","Jable"},
+                                        {"Accept","application/vnd.github.preview"}
+                                       ]}, 
+                                 [{timeout,timer:seconds(20)}], []) of
+                   Answer -> {Answer,ok}
+               catch
+                   exit:R -> {{error,R},exit};
+                   error:R -> {{error,R},error}
+               end,
+    if not(Code == ok) ->
+            ?Log("read_web(git,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
+       true -> ok
+    end,
+    read_web(git,A);
+
 read_web(default,Src) ->
+    ?Log("read_web(default,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
     inets:start(),
-    read_web(default,httpc:request(get, 
-			   {Src, [{"User-Agent","Jable"}
-				 ]}, 
-			   [], []));
+    {A,Code} = try
+                   httpc:request(get, 
+                                 {Src, [{"User-Agent","Jable"}
+                                       ]}, 
+                                 [{timeout,timer:seconds(20)}], []) of
+                   Answer -> {Answer,ok}
+               catch
+                   exit:R -> {{error,R},exit};
+                   error:R -> {{error,R},
+                               error}
+               end,
+    if not(Code == ok) ->
+            ?Log("read_web(default,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
+       true -> ok
+    end,
+    read_web(default,A);
+
 read_web(_,Reason) ->
-        {error,Reason}.
+    ?Log("read_web(_,Reason)",{reason,Reason}),
+             {error,Reason}.
 
 check(Header) ->
     case proplists:get_value("status", Header) of
@@ -85,7 +134,13 @@ check(Header) ->
 	    ok;
 	"403 Forbidden" ->
 	    T = proplists:get_value("x-ratelimit-reset",Header),
-	    list_to_integer(T);
+	    Limit = list_to_integer(T),
+            Now = erlproject_cunit:epoch_now(),
+            if Limit < Now  -> error;
+               true ->
+                   %%  error_logger:info_report(["check(Header) resulted T",{"x-ratelimit-reset",T},{header, Header}]),
+                    Limit
+            end;
 	_ ->
 	    error
     end.
@@ -102,7 +157,6 @@ parse({struct,[{_,_X},{_,{array, List}}]}) ->
     List;
 parse(_) ->
     {error,json_failed}.
-
 
 extract(git, {struct, List}) ->
     #git{id = proplists:get_value("id",List),
@@ -174,8 +228,8 @@ extract(sfapi, {struct,[{_,{struct,List}}]}) ->
 	 created_at = C,
 	 watchers = 0};
 extract(bbapi, {struct, List}) ->
-%name,full_name, owner, html_url, description, languages,  created_at,
-%updated_at,  watchers , forks
+                                                %name,full_name, owner, html_url, description, languages,  created_at,
+                                                %updated_at,  watchers , forks
     Name = proplists:get_value("slug",List),
     Owner = proplists:get_value("owner",List),
     #git{id = 2,
@@ -210,11 +264,21 @@ source_gen({{Year,Month,_},_}) ->
     source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
 source_gen(Y,M,Y,M,Buff)->
     Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}, 
-	     google,sourceforge, bitbucket];
+	     bitbucket,sourceforge,google];
+
+%% temporary fix to test exit erlproject_unit after the last item is parsed
+%% source_gen({{Year,Month,_},_}) ->
+%%     [sourceforge,bitbucket].
+
+%% source_gen({{Year,Month,_},_}) ->
+%%     [ sourceforge, google,bitbucket ]++source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
+%% source_gen(Y,M,Y,M,Buff)->
+%%     Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}];
+
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
-		 [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
-		  {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
+                   [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
+                    {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
 source_gen(Y,M,TY,TM,Buff) ->
     source_gen(Y,M+1,TY,TM,Buff ++ 
 		   [{l,date_format(Y,M)++".."++date_format(Y,M+1)},
@@ -245,6 +309,7 @@ grab_next(git,Links) ->
     end;
 
 grab_next(google,[]) ->
+    ?Log("grab_next(google)",{reason,last}),
     last;
 grab_next(google,[{_,Attr,[<<"Next ">>|_]}|_T]) ->
     "https://code.google.com/hosting/" ++
@@ -253,6 +318,7 @@ grab_next(google,[_|T]) ->
     grab_next(google,T);
 
 grab_next(sf,[]) ->
+    ?Log("grab_next(sf)",{reason,last}),
     last;
 grab_next(sf, [{_,Attr,[<<"Next">>|_]}|_T]) ->
     "http://sourceforge.net" ++
@@ -261,6 +327,7 @@ grab_next(sf, [_|T]) ->
     grab_next(sf, T);
 
 grab_next(bitbucket,[]) ->
+    ?Log("grab_next(bitbucket)",{reason,last}),
     last;
 grab_next(bitbucket, [{_,Attr,[<<"Next">>|_]}|_T]) ->
     case bitstring_to_list(proplists:get_value(<<"href">>,Attr)) of
@@ -319,12 +386,12 @@ get_content([{_,Attr,_} | T] , Filter , Value , Buff) ->
 
 get_content([],_,_ , Buff) ->
     Buff. 
-						     
+
 
 pull_content([{Key,Val}|T] , FKey) ->
     case bitstring_to_list(Key) == FKey of
 	true ->
-	   bitstring_to_list(Val);
+            bitstring_to_list(Val);
 	false ->
 	    pull_content(T,FKey)
     end;
@@ -402,3 +469,4 @@ month_num("Dec") ->
     12;
 month_num(_) ->
     0.
+
