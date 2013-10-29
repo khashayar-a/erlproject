@@ -135,7 +135,7 @@ read_commits(Commits) ->
 
 wait(T) ->
     Now = erlproject_cunit:epoch_now(),
-    error_logger:info_report(["Waiting",{min, (T-Now)/60},{time,calendar:local_time()}]),
+    ?Log("Waiting",[{min, (T-Now)/60},{time,calendar:local_time()}]),
     if T>Now ->
             timer:sleep( max(T - Now,1) * 1000);
        true -> ok
