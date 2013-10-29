@@ -18,11 +18,13 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3, gen_query/2, fix/1]).
+-export([fix_comment/1]).
 
 -define(SERVER, ?MODULE). 
 
 -include("records.hrl").
 
+-define(DATE_LENGTH, 19).
 
 %%--------------------------------------------------------------------
 start_link() ->
@@ -34,6 +36,20 @@ init([]) ->
     {ok, []}.
 
 %%--------------------------------------------------------------------
+handle_call({get_value,{git, ReturnField, FilterField, Value}}, _From, State) ->
+    SqlReq = gen_query(get_value,{git, ReturnField, FilterField, Value}), 
+    Result = case query_function(get, SqlReq) of
+                 {error,_} ->
+                     {novalue,undefined};
+                 {ok,[[undefined]|_]} -> {novalue, undefined};
+                 {ok,[]} ->  {novalue, undefined};
+                 {ok, [[]|_]} -> {novalue, undefined};
+                 {ok, [[BinValue]|_]} ->  
+                     %% example: [[<<"2013-10-14T11:55:36Z">>]]
+                     {value, binary_to_list(BinValue)}
+             end,
+    {reply, Result, State};
+
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -42,28 +58,33 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 
 handle_cast({write, git, Data = #git{}}, State) ->
-    {Query_Git, Query_Owner} = gen_query(git, Data),
-    Res1 = query_function(write, Query_Git),
-    Res2 = query_function(write, Query_Owner),
-    case {Res1,Res2} of
-	{ok,ok} ->
-	    {noreply, State};
-	{ok,{error,R}} ->
-	    gen_server:cast(erlproject_cunit,{database,R}),
-	    {noreply, State};
-	{{error,R},ok} ->
-	    gen_server:cast(erlproject_cunit,{database,R}),
-	    {noreply, State};
-	{{error,R1},{error,R2}} ->
-	    gen_server:cast(erlproject_cunit,{database,{R1,R2}}),
-	    {noreply, State}
+    fix_clarity(Data), 
+    case gen_query(git, Data) of
+        {Query_Git, Query_Owner} ->
+
+            Res1 = query_function(write, Query_Git),
+            Res2 = query_function(write, Query_Owner),
+            case {Res1,Res2} of
+                {ok,ok} ->
+                    {noreply, State};
+                {ok,{error,R}} ->
+                    gen_server:cast(erlproject_cunit,{database,R}),
+                    {noreply, State};
+                {{error,R},ok} ->
+                    gen_server:cast(erlproject_cunit,{database,R}),
+                    {noreply, State};
+                {{error,R1},{error,R2}} ->
+                    gen_server:cast(erlproject_cunit,{database,{R1,R2}}),
+                    {noreply, State}
+            end;
+        error ->
+            {noreply, State}
     end;
 handle_cast({write, git_language, Data}, State) ->
     Query = gen_query(git_language, Data),
     Res = query_function(write,Query),
     case Res of
 	ok ->
-	    %io:format("Query submitted ~p~n", [Query]),
 	    {noreply, State};
 	{error,Reason} ->
 	    gen_server:cast(erlproject_cunit,{database,Reason}),
@@ -112,7 +133,7 @@ handle_cast({write, bbapi, Data = #git{}}, State) ->
 	    {noreply, State}
     end;
 handle_cast(Msg, State) ->
-    io:format("Message coming ~p~n" , [Msg]),
+    io:format("erlproject_db Message coming ~p~n" , [Msg]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -121,7 +142,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, _State) ->
-    io:format("Reason : ~p~n",[Reason]),
+    ?L("erlproject_db terminate",[{reason,Reason}]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -132,20 +153,79 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 connect() ->
-    mysql:start(p1, "db.student.chalmers.se",
-		3306, "abdoli", "kgcH8v7c", "abdoli").
+                                                %    mysql:start(p1, "db.student.chalmers.se",
+                                                %		3306, "abdoli", "kgcH8v7c", "abdoli").
+    mysql:start(p1, "127.0.0.1",
+		3306, "evabihari", "ethebi1", "erlproject").
 
 query_function(write, Q) ->
     try mysql:fetch(p1, Q) of
 	Result ->
-	    {R,{_,_,_,_,_,_,_,_}} = Result,
-	    case R of
-		updated ->
-		    ok;
-		error ->
-		    {error, {sql_syntax,Q}};
-		_ ->
-		    {error, R}
+            case Result of
+                {R,{_,_,_,_,_,_,_,_}} -> 
+
+                    case R of
+                        updated ->
+                            ok;
+                        error ->
+                            {error, {sql_syntax,Q}};
+                        _ ->
+                            {error, R}
+                    end;
+                {error,R2} ->
+                    {error,R2}
+	    end
+    catch
+	exit:_Exit ->
+	    {error, no_connection}
+    end;
+query_function(get, Q) ->
+    try 
+        case mysql:fetch(p1, Q) of
+            {data,MySqlRes} ->
+                {ok, mysql:get_result_rows(MySqlRes)};
+            R -> {error, R}
+        end
+    catch
+	exit:_Exit ->
+	    {error, no_connection}
+    end;                    
+query_function(select,Q) ->
+   try mysql:fetch(p1, Q) of
+	Result ->
+            case Result of
+                {R,{_,_,Res,_,_,_,_,_}} -> 
+                    case R of
+                        data ->
+                            {ok, Res};
+                        error ->
+                            {error, {sql_syntax,Q}};
+                        _ ->
+                            {error, R}
+                    end;
+                {error,R2} ->
+                    {error,R2}
+	    end
+    catch
+	exit:_Exit ->
+	    {error, no_connection}
+    end;
+
+query_function(delete,Q) ->
+   try mysql:fetch(p1, Q) of
+	Result ->
+            case Result of
+                {R,{_,_,Re_,_,_,_,_,_}} -> 
+                    case R of
+                        updated ->
+                            ok;
+                        error ->
+                            {error, {sql_syntax,Q}};
+                        _ ->
+                            {error, R}
+                    end;
+                {error,R2} ->
+                    {error,R2}
 	    end
     catch
 	exit:_Exit ->
@@ -153,41 +233,47 @@ query_function(write, Q) ->
     end.
 
 gen_query(git, Data = #git{}) ->
-    Query_Git = "insert into erlproject_git " ++
-	" (id, name, full_name, owner_id, html_url, description," ++ 
-	" created_at, updated_at, pushed_at , clone_url," ++
-	" stars, open_issues, forks, source) values ('" ++
-	integer_to_list(Data#git.id) ++ "' , '" ++
-        Data#git.name  ++ "' , '" ++
-        Data#git.full_name  ++ "' , '" ++
-        integer_to_list(Data#git.owner#owner.id)  ++ "' , '" ++
-        Data#git.html_url  ++ "' , '" ++
-        fix(Data#git.description)  ++ "' , '" ++
-%        Data#git.languages  ++ "' , '" ++
-        Data#git.created_at  ++ "' , '" ++
-	Data#git.updated_at  ++ "' , '" ++
-	Data#git.pushed_at  ++ "' , '" ++     
-	Data#git.clone_url ++ "' , '" ++
-	integer_to_list(Data#git.watchers)  ++ "' , '" ++
-        integer_to_list(Data#git.open_issues)  ++ "' , '" ++
-        integer_to_list(Data#git.forks)  ++ 
-	"' , 'github') on duplicate key update " ++
-	" forks = '" ++ integer_to_list(Data#git.forks) ++
-	"' , stars = '" ++ integer_to_list(Data#git.watchers) ++
-	"' , open_issues = '" ++ integer_to_list(Data#git.open_issues) ++
-	"' , pushed_at = '" ++ Data#git.pushed_at ++
-	"' , updated_at = '" ++ Data#git.updated_at ++ 
-	"' , clone_url = '" ++ Data#git.clone_url ++ "'",
-    
-    Query_Owner =  "insert into erlproject_owner " ++
-	" (id, login, avatar_url, url) values (' " ++
-	integer_to_list(Data#git.owner#owner.id)  ++ "' , '" ++
-	Data#git.owner#owner.login  ++ "' , '" ++
-	Data#git.owner#owner.avatar_url  ++ "' , '" ++
-	Data#git.owner#owner.url  ++ "') " ++
-	" on duplicate key update url = ' " ++
-	Data#git.owner#owner.url  ++ "' ",
-    {Query_Git, Query_Owner};
+    try
+        {"insert into erlproject_git " ++
+             " (id, name, full_name, owner_id, html_url, description," ++ 
+             " created_at, updated_at, pushed_at , clone_url," ++
+             " stars, open_issues, forks, source) values ('" ++
+             integer_to_list(Data#git.id) ++ "' , '" ++
+             Data#git.name  ++ "' , '" ++
+             Data#git.full_name  ++ "' , '" ++
+             integer_to_list(Data#git.owner#owner.id)  ++ "' , '" ++
+             Data#git.html_url  ++ "' , '" ++
+             fix(Data#git.description)  ++ "' , '" ++
+                                                %        Data#git.languages  ++ "' , '" ++
+             Data#git.created_at  ++ "' , '" ++ 
+             Data#git.updated_at  ++ "' , '" ++
+             Data#git.pushed_at  ++ "' , '" ++     
+             Data#git.clone_url ++ "' , '" ++
+             integer_to_list(Data#git.watchers)  ++ "' , '" ++
+             integer_to_list(Data#git.open_issues)  ++ "' , '" ++
+             integer_to_list(Data#git.forks)  ++ 
+             "' , 'github') on duplicate key update " ++
+             " forks = '" ++ integer_to_list(Data#git.forks) ++
+             "' , stars = '" ++ integer_to_list(Data#git.watchers) ++
+             "' , open_issues = '" ++ integer_to_list(Data#git.open_issues) ++
+             "' , pushed_at = '" ++ Data#git.pushed_at ++
+             "' , updated_at = '" ++ Data#git.updated_at ++ 
+             "' , clone_url = '" ++ Data#git.clone_url ++ "'",
+
+         "insert into erlproject_owner " ++
+             " (id, login, avatar_url, url) values (' " ++
+             integer_to_list(Data#git.owner#owner.id)  ++ "' , '" ++
+             Data#git.owner#owner.login  ++ "' , '" ++
+             Data#git.owner#owner.avatar_url  ++ "' , '" ++
+             Data#git.owner#owner.url  ++ "') " ++
+             " on duplicate key update url = ' " ++
+             Data#git.owner#owner.url  ++ "' "}
+    of
+        {Query_Git, Query_Owner} -> {Query_Git, Query_Owner}
+    catch
+        error:_Reason ->
+            error
+    end;
 
 gen_query(git_language, {Body,Name}) ->
     "update erlproject_git " ++
@@ -210,17 +296,28 @@ gen_query(git_commit, {Number,Data}) ->
 	fix(Data#commit.author) ++ "' , '" ++
 	Data#commit.date ++ "' , '" ++
 	Data#commit.url ++ "' , '" ++
-	fix(Data#commit.message) ++ "') on duplicate key update " ++ 
+	fix_comment(fix(Data#commit.message)) ++ "') on duplicate key update " ++ 
 	"sha = '" ++ Data#commit.sha ++ 
 	"' , author = '" ++ fix(Data#commit.author) ++ 
 	"' , date = '" ++ Data#commit.date ++ 
 	"' , url = '" ++ Data#commit.url ++ 
-	"' , message = '" ++ fix(Data#commit.message) ++ "'";
+	"' , message = '" ++ fix_comment(fix(Data#commit.message)) ++ "'";
 
 gen_query(git_commit_delete, Name) ->
     "delete from erlproject_commits where id = " ++
 	"(select id from erlproject_git where full_name = '"++
 	Name ++ "')";
+
+gen_query(git_project_delete, Id) ->
+    "delete from erlproject_git where id = '" ++ integer_to_list(Id) ++ "'"; 
+
+
+gen_query(git_clarity, Data= #git{}) ->
+    Url =  Data#git.html_url,
+    L = string:tokens(Url, "/"),
+    Name = lists:nth(3,L) ++ "/" ++ lists:nth(4,L),
+    "select id from erlproject_git where full_name = '" ++
+	Name ++ "'";   
 
 gen_query(google, Data = #git{}) ->
     "insert into erlproject_git " ++
@@ -266,17 +363,23 @@ gen_query(bbapi, Data = #git{}) ->
         Data#git.html_url  ++ "' , '" ++
         fix(Data#git.description)  ++ "' , '" ++
         fix(Data#git.languages)  ++ "' , '" ++
-        Data#git.created_at  ++ "' , '" ++
-        Data#git.updated_at  ++ "' , '" ++
+        string:left(Data#git.created_at,?DATE_LENGTH)  ++ "' , '" ++
+        string:left(Data#git.updated_at,?DATE_LENGTH)  ++ "' , '" ++
 	integer_to_list(Data#git.watchers)  ++ "', '" ++
 	integer_to_list(Data#git.forks)  ++ "'," ++
 	"'bitbucket') on duplicate key update " ++
 	" forks = '" ++ integer_to_list(Data#git.forks) ++
 	"' , stars = '" ++ integer_to_list(Data#git.watchers) ++
-	"' , updated_at = '" ++ Data#git.updated_at ++ "'".
+	"' , updated_at = '" ++ string:left(Data#git.updated_at,?DATE_LENGTH) ++ "'";
+gen_query(get_value,{git, ReturnField, Field, Value}) when is_integer(Value) ->
+    gen_query(get_value,{git, ReturnField, Field, integer_to_list(Value)});
+gen_query(get_value,{git, ReturnField, Field, Value}) ->
+    "SELECT "++ ReturnField ++ " from erlproject_git where "++Field++" = '" ++ Value++"'".
 
-
-
+fix_comment(String) ->
+    S1 = re:replace(String,"'","", [global,{return,list}]),
+    A=re:replace(S1,"\\\\","", [global,{return,list}]),
+    re:replace(re:replace(A, "\\s+$", "", [global,{return,list}]), "^\\s+", "", [global,{return,list}]).
 
 fix({array,List})->
     fix(language,List,[]);
@@ -319,4 +422,35 @@ fix([H|T], Buff) when H < 127->
 fix([_|T], Buff) ->
     fix(T, Buff).
 
+
+fix_clarity(Data= #git{}) ->
+    %% check that id in the git project is individual
+    %% there can be problems with github to return different id?
+    %% Url =  Data#git.html_url,
+    %% L = string:tokens(Url, "/"),
+    %% Name = lists:nth(3,L) ++ "/" ++ lists:nth(4,L),
+    Q = gen_query(git_clarity, Data),
+    case query_function(select,Q) of
+        {ok,[]} ->
+            %% ?Log("fix_clarity",{url,Data#git.html_url}),
+            ok;
+        {ok,List} ->
+            %% ?Log("fix_clarity",{ids,List}),
+
+            case length(lists:flatten(List)) of 
+                1 -> ok;
+                _ ->
+                    % more than 1 git project with the same name - let's  them
+                    error_logger:info_report(["More than 1 git_project",
+                                              {url,Data#git.html_url},{ids,List}]),
+                    remove_projects(lists:flatten(List))
+            end
+    end.
+    
+remove_projects([]) ->
+    ok;
+remove_projects([L|H]) ->
+    Q = gen_query(git_project_delete, L),
+    query_function(delete,Q),
+    remove_projects(H).
 
