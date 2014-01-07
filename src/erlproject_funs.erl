@@ -261,7 +261,7 @@ extract_owner({struct, List}) ->
 
 
 source_gen({{Year,Month,_},_}) ->
-    source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
+    source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
 source_gen(Y,M,Y,M,Buff)->
     Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}, 
 	     bitbucket,sourceforge,google];
@@ -277,12 +277,12 @@ source_gen(Y,M,Y,M,Buff)->
 
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
-                   [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
-                    {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
+                   [{l,date_format(Y,12)++"-01.."++date_format(Y+1,1)++"-01"},
+                    {s,date_format(Y,12)++"-01.."++date_format(Y+1,1)++"-01"}]);
 source_gen(Y,M,TY,TM,Buff) ->
     source_gen(Y,M+1,TY,TM,Buff ++ 
-		   [{l,date_format(Y,M)++".."++date_format(Y,M+1)},
-		    {s,date_format(Y,M)++".."++date_format(Y,M+1)}]).
+		   [{l,date_format(Y,M)++"-01.."++date_format(Y,M+1)++"-01"},
+		    {s,date_format(Y,M)++"-01.."++date_format(Y,M+1)++"-01"}]).
 
 date_format(Y,M) when M < 10->
     integer_to_list(Y)++"-"++integer_to_list(0)++integer_to_list(M);
