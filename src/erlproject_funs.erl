@@ -103,6 +103,12 @@ read_web(git,Src) ->
     end,
     read_web(git,A);
 
+read_web(default,{error,Reason}) ->
+     ?Log("read_web(default,{error,Reason})",[{error,Reason},{module, ?MODULE},{line,?LINE}]),
+     ?Log("Waiting",[{sec, 60},{time,calendar:local_time()}]),
+    % timer:sleep(60*1000),
+     {error, Reason};
+
 read_web(default,Src) ->
     ?Log("read_web(default,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
@@ -122,6 +128,10 @@ read_web(default,Src) ->
             ?Log("read_web(default,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
        true -> ok
     end,
+   % Need to handle the following case:
+   % A =          {error,
+             %% {could_not_parse_as_http,
+             %%     <<"HTTP/1.1 0\r\nDate: Wed, 08 Jan 2014 21:48:20 GMT\r\nStatus: 0\r\nConnection: close\r\nContent-Type: text/html;charset=utf-8\r\nX-RateLimit-Limit: 5000\r\nX-RateLimit-Remaining: 4871\r\nX-RateLimit-Reset: 1389221128\r\nX-Content-Type-Options: nosniff\r\nContent-Length: 0\r\nAccess-Control-Allow-Credentials: true\r\nAccess-Control-Expose-Headers: ETag, Link, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval\r\nAccess-Control-Allow-Origin: *\r\nX-GitHub-Request-Id: 51B7B182:06F3:7FF9E89:52CDC79A\r\n\r\n">>}}},
     read_web(default,A);
 
 read_web(_,Reason) ->
@@ -189,14 +199,20 @@ extract(google , [Name_Link, _ , Star_Data , _ , DescT|_]) ->
     [{_,Attrs,Val}] = get_value([Name_Link], "a", []),
     case Star_Data of
 	{_,_,[Updated,{_,_,[Stars]}]} ->
-	    Desc = DescT;
+	    DescIn = DescT;
 	{_,_,[Updated|_]} ->
 	    Stars = <<"0">>,
-	    Desc = DescT;
+	    DescIn = DescT;
 	X ->
 	    Stars = <<"0">>,
 	    Updated = <<"undef">>,
-	    Desc = X
+	    DescIn = X
+    end,
+    Desc = case DescIn of
+        D when is_bitstring(D) == true -> D;
+        [] -> <<"undef">>;
+        _D1 ->  %% error_logger:info_report(["Desc ",{desc,_D1}]),
+                   <<"undef">>
     end,
     Html_Url = proplists:get_value(<<"href">>,Attrs),
     Full_Name = hd(Val),
@@ -258,13 +274,11 @@ extract_owner({struct, List}) ->
 %%% @doc
 %%%     A Link generator for different sources
 %%% @end
-
-
 source_gen({{Year,Month,_},_}) ->
-    source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
+    [bitbucket,sourceforge,google]++source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
 source_gen(Y,M,Y,M,Buff)->
-    Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}, 
-	     bitbucket,sourceforge,google];
+    Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}]; 
+	     
 
 %% temporary fix to test exit erlproject_unit after the last item is parsed
 %% source_gen({{Year,Month,_},_}) ->
@@ -277,17 +291,17 @@ source_gen(Y,M,Y,M,Buff)->
 
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
-                   [{l,date_format(Y,12)++"-01.."++date_format(Y+1,1)++"-01"},
-                    {s,date_format(Y,12)++"-01.."++date_format(Y+1,1)++"-01"}]);
+                   [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
+                    {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
 source_gen(Y,M,TY,TM,Buff) ->
     source_gen(Y,M+1,TY,TM,Buff ++ 
-		   [{l,date_format(Y,M)++"-01.."++date_format(Y,M+1)++"-01"},
-		    {s,date_format(Y,M)++"-01.."++date_format(Y,M+1)++"-01"}]).
+		   [{l,date_format(Y,M)++".."++date_format(Y,M+1)},
+		    {s,date_format(Y,M)++".."++date_format(Y,M+1)}]).
 
 date_format(Y,M) when M < 10->
-    integer_to_list(Y)++"-"++integer_to_list(0)++integer_to_list(M);
+    integer_to_list(Y)++"-"++integer_to_list(0)++integer_to_list(M)++"-01";
 date_format(Y,M) ->
-    integer_to_list(Y)++"-"++integer_to_list(M).
+    integer_to_list(Y)++"-"++integer_to_list(M)++"-01".
 
 
 

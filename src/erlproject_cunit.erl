@@ -58,13 +58,16 @@ handle_cast({next, Url}, State) ->
 %%     erlproject_parser:start(Url),
 %%     {noreply, State};
 handle_cast(last, []) ->
-    State = erlproject_funs:source_gen(calendar:universal_time()),
     error_logger:info_report(["Round Compelete",{time,calendar:local_time()}]),
+    % wait 1 hour before starting next round
+    timer:sleep(60*1000*60),
+
     %% kill erlproject_cunit in order to destroy parser processes (if there are more than 1)
     N = check_other_parser(),
     if (N>0) ->    kill_other_parsers();
        true -> ok
     end,
+    State = erlproject_funs:source_gen(calendar:universal_time()),
     erlproject_parser:start(gen_url(hd(State))),
     {noreply, tl(State)};
 handle_cast(last, State) ->
