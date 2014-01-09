@@ -106,7 +106,6 @@ read_web(git,Src) ->
 read_web(default,{error,Reason}) ->
      ?Log("read_web(default,{error,Reason})",[{error,Reason},{module, ?MODULE},{line,?LINE}]),
      ?Log("Waiting",[{sec, 60},{time,calendar:local_time()}]),
-    % timer:sleep(60*1000),
      {error, Reason};
 
 read_web(default,Src) ->
