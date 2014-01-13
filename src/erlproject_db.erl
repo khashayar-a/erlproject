@@ -439,7 +439,7 @@ fix_clarity(Data= #git{}) ->
 
             case length(lists:flatten(List)) of 
                 1 -> ok;
-                _ ->
+                _N ->
                     % more than 1 git project with the same name - let's  them
                     error_logger:info_report(["More than 1 git_project",
                                               {url,Data#git.html_url},{ids,List}]),

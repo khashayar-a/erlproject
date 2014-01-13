@@ -116,7 +116,7 @@ read_web(default,Src) ->
                    httpc:request(get, 
                                  {Src, [{"User-Agent","Jable"}
                                        ]}, 
-                                 [{timeout,timer:seconds(20)}], []) of
+                                 [{timeout,timer:seconds(30)}], []) of
                    Answer -> {Answer,ok}
                catch
                    exit:R -> {{error,R},exit};

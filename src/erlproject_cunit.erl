@@ -60,7 +60,7 @@ handle_cast({next, Url}, State) ->
 handle_cast(last, []) ->
     error_logger:info_report(["Round Compelete",{time,calendar:local_time()}]),
     % wait 1 hour before starting next round
-    timer:sleep(60*1000*60),
+    timer:sleep(timer:hours(1)),
 
     %% kill erlproject_cunit in order to destroy parser processes (if there are more than 1)
     N = check_other_parser(),
@@ -102,9 +102,10 @@ handle_cast({error,Reason},[]) ->
     end,    {noreply, tl(State)};
 
 handle_cast({error,Reason},State) ->
-    error_logger:info_report(["Unknown Error with State",{reason,Reason},{state,hd(State)}]),
-    case check_other_parser() of
-        N when (N <2)  -> %% new process to be started if ther is no other parsing process exist
+    N =  check_other_parser(),
+    error_logger:info_report(["Unknown Error with State",{reason,Reason},{state,hd(State)},{no_of_parsers,N}]),
+    case N of
+        N when (N <2)  -> %% new process to be started if there is no other parsing process exist
             erlproject_parser:start(gen_url(hd(State)));
         _ -> ok
     end,
