@@ -17,14 +17,16 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3, gen_query/2, fix/1]).
+	 terminate/2, code_change/3, gen_query/2, fix/1, fix/2]).
 -export([fix_comment/1]).
 
 -define(SERVER, ?MODULE). 
 
 -include("records.hrl").
 
--define(DATE_LENGTH, 19).
+-define(DATE_LENGTH, 10).
+-define(TIME_LENGTH, 8).
+
 
 %%--------------------------------------------------------------------
 start_link() ->
@@ -363,14 +365,14 @@ gen_query(bbapi, Data = #git{}) ->
         Data#git.html_url  ++ "' , '" ++
         fix(Data#git.description)  ++ "' , '" ++
         fix(Data#git.languages)  ++ "' , '" ++
-        string:left(Data#git.created_at,?DATE_LENGTH)  ++ "' , '" ++
-        string:left(Data#git.updated_at,?DATE_LENGTH)  ++ "' , '" ++
+        fix(bbapi_date,Data#git.created_at)  ++ "' , '" ++
+        fix(bbapi_date,Data#git.updated_at)  ++ "' , '" ++
 	integer_to_list(Data#git.watchers)  ++ "', '" ++
 	integer_to_list(Data#git.forks)  ++ "'," ++
 	"'bitbucket') on duplicate key update " ++
 	" forks = '" ++ integer_to_list(Data#git.forks) ++
 	"' , stars = '" ++ integer_to_list(Data#git.watchers) ++
-	"' , updated_at = '" ++ string:left(Data#git.updated_at,?DATE_LENGTH) ++ "'";
+	"' , updated_at = '" ++ fix(bbapi_date,Data#git.updated_at) ++ "'";
 gen_query(get_value,{git, ReturnField, Field, Value}) when is_integer(Value) ->
     gen_query(get_value,{git, ReturnField, Field, integer_to_list(Value)});
 gen_query(get_value,{git, ReturnField, Field, Value}) ->
@@ -385,11 +387,11 @@ fix({array,List})->
     fix(language,List,[]);
 fix({{YY,MM,DD},{HH,Mm,SS}}) ->
     integer_to_list(YY) ++ "-" ++
-        integer_to_list(MM) ++ "-" ++
-	integer_to_list(DD) ++ " " ++
-	integer_to_list(HH) ++ ":" ++
-	integer_to_list(Mm) ++ ":" ++
-	integer_to_list(SS);
+        integer_to_list2(MM) ++ "-" ++
+	integer_to_list2(DD) ++ "T" ++
+	integer_to_list2(HH) ++ ":" ++
+	integer_to_list2(Mm) ++ ":" ++
+	integer_to_list2(SS)++"Z";
 fix(null) ->
     [];
 fix(undefined) ->
@@ -402,6 +404,9 @@ fix(language,[H],Buff) ->
 fix(language,[H|T],Buff) ->
     fix(language,T,Buff ++ H ++ ",").
 
+fix(bbapi_date, Date) ->
+    string:left(Date,?DATE_LENGTH) ++ "T" ++ 
+        string:substr(Date,?DATE_LENGTH+2,?TIME_LENGTH) ++"Z";
 fix([], Buff) ->
     Buff;
 
@@ -454,3 +459,10 @@ remove_projects([L|H]) ->
     query_function(delete,Q),
     remove_projects(H).
 
+integer_to_list2(X) when X<10 ->
+    integer_to_list(0) ++ integer_to_list(X);
+integer_to_list2(X) ->
+    integer_to_list(X).
+
+                             
+    

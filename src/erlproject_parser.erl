@@ -228,8 +228,8 @@ parse(sfapi,Body) ->
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, sfapi,  Data}); 
 	Reason ->
-	    error_logger:info_report(["Pasing SF MOCHI",
-				      {reason,Reason}])	   
+	    error_logger:info_report(["Parsing SF MOCHI",
+				      {reason,Reason},{body,mochijson:decode(Body)} ])	   
 
     end;
 
@@ -252,8 +252,9 @@ parse(bbapi,Body) ->
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, bbapi,  Data}); 
 	Reason ->
-	    error_logger:info_report(["Pasing BB MOCHI",
-				      {reason,Reason}])	   
+	    error_logger:info_report(["Parsing BB MOCHI",
+				      {reason,Reason},
+                                     {body,mochijson:decode(Body)}])	   
 
     end.
 
