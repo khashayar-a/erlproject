@@ -33,12 +33,24 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
-init([]) ->
-    connect(),
-    {ok, []}.
+init([]) ->  
+     ?Log("erlproject_db:init",[]),
+     R1= case erlproject_funs:connect() of
+        {ok,Pid} ->  ?Log("connect successful",[{pid,Pid}]),
+                 {ok,[]};
+        {error, {already_started,_}} -> %mysql was already started by other service, it's ok
+                 error_logger:info_report("my_sql already started",{reason,"already_started"}),
+                 {ok,[]}; 
+        {error, Reason} ->
+                 error_logger:info_report("Starting my_sql failed",{reason,Reason}),
+                 {error, Reason}
+         end,
+    R1.
+    
 
 %%--------------------------------------------------------------------
 handle_call({get_value,{git, ReturnField, FilterField, Value}}, _From, State) ->
+    ?Log("erlproject_db, get_value, git ",[{returnField,ReturnField}]),
     SqlReq = gen_query(get_value,{git, ReturnField, FilterField, Value}), 
     Result = case query_function(get, SqlReq) of
                  {error,_} ->
@@ -60,6 +72,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 
 handle_cast({write, git, Data = #git{}}, State) ->
+    ?Log("erlproject_db, handle_cast, write, git ",[{data,Data}]),
     fix_clarity(Data), 
     case gen_query(git, Data) of
         {Query_Git, Query_Owner} ->
@@ -83,6 +96,7 @@ handle_cast({write, git, Data = #git{}}, State) ->
             {noreply, State}
     end;
 handle_cast({write, git_language, Data}, State) ->
+    ?Log("erlproject_db, handle_cast, write, git_language ",[{data,Data}]),
     Query = gen_query(git_language, Data),
     Res = query_function(write,Query),
     case Res of
@@ -94,6 +108,7 @@ handle_cast({write, git_language, Data}, State) ->
     end;
 
 handle_cast({write, git_commit, Data}, State) ->
+    ?Log("erlproject_db, handle_cast, write, git_commit ",[{data,Data}]),
     Query = gen_query(git_commit, Data),
     Res = query_function(write,Query),
     case Res of
@@ -144,7 +159,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(Reason, _State) ->
-    ?L("erlproject_db terminate",[{reason,Reason}]),
+    ?Log("erlproject_db terminate",[{reason,Reason}]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -153,14 +168,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-connect() ->
-                                                %    mysql:start(p1, "db.student.chalmers.se",
-                                                %		3306, "abdoli", "kgcH8v7c", "abdoli").
-    mysql:start(p1, "127.0.0.1",
-		3306, "evabihari", "ethebi1", "erlproject").
-
 query_function(write, Q) ->
+    ?Log("erlproject_db, query_function, write ",[{data,Q}]),
     try mysql:fetch(p1, Q) of
 	Result ->
             case Result of
@@ -172,16 +181,18 @@ query_function(write, Q) ->
                         error ->
                             {error, {sql_syntax,Q}};
                         _ ->
-                            {error, R}
+                            {error,  Result}
                     end;
                 {error,R2} ->
                     {error,R2}
 	    end
     catch
-	exit:_Exit ->
-	    {error, no_connection}
+        exit:Exit ->
+            ?Log("query_function(write,Q) got exit",[{exit,Exit}]),
+            exit(Exit)
     end;
 query_function(get, Q) ->
+    ?Log("erlproject_db, query_function, get ",[{data,Q}]),
     try 
         case mysql:fetch(p1, Q) of
             {data,MySqlRes} ->
@@ -189,10 +200,12 @@ query_function(get, Q) ->
             R -> {error, R}
         end
     catch
-	exit:_Exit ->
-	    {error, no_connection}
+	exit:Exit ->
+            ?Log("query_function(get,Q) got exit",[{exit,Exit}]),
+            exit(Exit)
     end;                    
 query_function(select,Q) ->
+    ?Log("erlproject_db, query_function, select ",[{data,Q}]),
    try mysql:fetch(p1, Q) of
 	Result ->
             case Result of
@@ -201,7 +214,7 @@ query_function(select,Q) ->
                         data ->
                             {ok, Res};
                         error ->
-                            {error, {sql_syntax,Q}};
+                            {error, {reason,Result}};
                         _ ->
                             {error, R}
                     end;
@@ -209,15 +222,18 @@ query_function(select,Q) ->
                     {error,R2}
 	    end
     catch
-	exit:_Exit ->
-	    {error, no_connection}
+	exit:Exit ->
+	%%     {error, no_connection}
+	% {'EXIT',Exit} = Err -> 
+            ?Log("query_function(select,Q) got exit",[{exit,Exit}]),
+            exit(Exit)
     end;
 
 query_function(delete,Q) ->
    try mysql:fetch(p1, Q) of
 	Result ->
             case Result of
-                {R,{_,_,Re_,_,_,_,_,_}} -> 
+                {R,{_,_,_Re_,_,_,_,_,_}} -> 
                     case R of
                         updated ->
                             ok;
@@ -230,8 +246,9 @@ query_function(delete,Q) ->
                     {error,R2}
 	    end
     catch
-	exit:_Exit ->
-	    {error, no_connection}
+	exit:Exit ->
+            ?Log("query_function(delete,Q) got exit",[{exit,Exit}]),
+            exit(Exit)
     end.
 
 gen_query(git, Data = #git{}) ->
@@ -436,6 +453,9 @@ fix_clarity(Data= #git{}) ->
     %% Name = lists:nth(3,L) ++ "/" ++ lists:nth(4,L),
     Q = gen_query(git_clarity, Data),
     case query_function(select,Q) of
+        {error,R} ->
+            gen_server:cast(erlproject_cunit,{database,R}),
+            ok;
         {ok,[]} ->
             %% ?Log("fix_clarity",{url,Data#git.html_url}),
             ok;

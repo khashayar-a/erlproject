@@ -7,8 +7,6 @@
 
 -module(erlproject_funs).
 
-                                                %-export([read_web/2,convert_date/1, extract/1]).
-
 -compile(export_all).
 
 -include("records.hrl").
@@ -37,14 +35,12 @@ read_web(git,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
      error ->
                       {error,broken_html};
      Limit ->
-                      %% error_logger:info_report(["check(Headers) returned limit",{reason,calendar:gregorian_seconds_to_datetime(Limit)}]),
                       {limit, Limit}
 
 
     end;
 
 read_web(default,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
-    %% ?L("read_web(default,ok)",{reason,headers}),
     {success,{Headers,Body}};    
 read_web(_,{error,socket_closed_remotely})->
     ?Log("read_web(error,socket_closed_remotely)", {reason,socket_closed_remotely}),
@@ -83,7 +79,6 @@ read_web(_,{error,{enetunreach,_}})->
     ?Log("read_web(error,enetunreach)",{reason,network_unreachable}),
     {error, network_unreachable};
 read_web(git,Src) ->
-    ?Log("read_web(git,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
     inets:start(),
     {A,Code} = try
@@ -109,7 +104,6 @@ read_web(default,{error,Reason}) ->
      {error, Reason};
 
 read_web(default,Src) ->
-    ?Log("read_web(default,src)",[{src,Src},{module, ?MODULE},{line,?LINE}]),
     ssl:start(),
     inets:start(),
     {A,Code} = try
@@ -322,7 +316,6 @@ grab_next(git,Links) ->
     end;
 
 grab_next(google,[]) ->
-    ?Log("grab_next(google)",{reason,last}),
     last;
 grab_next(google,[{_,Attr,[<<"Next ">>|_]}|_T]) ->
     "https://code.google.com/hosting/" ++
@@ -331,7 +324,6 @@ grab_next(google,[_|T]) ->
     grab_next(google,T);
 
 grab_next(sf,[]) ->
-    ?Log("grab_next(sf)",{reason,last}),
     last;
 grab_next(sf, [{_,Attr,[<<"Next">>|_]}|_T]) ->
     "http://sourceforge.net" ++
@@ -340,7 +332,6 @@ grab_next(sf, [_|T]) ->
     grab_next(sf, T);
 
 grab_next(bitbucket,[]) ->
-    ?Log("grab_next(bitbucket)",{reason,last}),
     last;
 grab_next(bitbucket, [{_,Attr,[<<"Next">>|_]}|_T]) ->
     case bitstring_to_list(proplists:get_value(<<"href">>,Attr)) of
@@ -483,3 +474,33 @@ month_num("Dec") ->
 month_num(_) ->
     0.
 
+connect() ->
+   case whereis(erlproject_cunit) of
+       undefined -> 
+                                                %initial start don't need to do anything
+           ok;
+       _Pid -> 
+                                                %erlproject_db was crashed -> if parser crashed as well it needs to be restarted
+           ?Log("send continue_parsing message",[]),
+           gen_server:cast(erlproject_cunit, {continue_parsing})
+   end,
+
+   ?Log("erlproject_db:connect",[]),
+     %% start creates a gen_server process which is not
+     %% part of a supervision tree
+    mysql:start(p1, ?HOST, ?PORT, ?USER, ?PWD, ?PROJECT).
+
+%% Return a list of all tcp sockets
+tcp_sockets() -> port_list("tcp_inet").
+udp_sockets() -> port_list("udp_inet").
+sctp_sockets() -> port_list("sctp_inet").
+
+%% Return all ports having the name 'Name'
+port_list(Name) ->
+    lists:filter(
+      fun(Port) ->
+	      case erlang:port_info(Port, name) of
+		  {name, Name} -> true;
+		  _ -> false
+	      end
+      end, erlang:ports()).

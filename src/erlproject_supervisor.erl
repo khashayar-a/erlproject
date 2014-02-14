@@ -16,6 +16,8 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-include("records.hrl").
+
 -define(SERVER, ?MODULE).
 
 %%--------------------------------------------------------------------
@@ -24,6 +26,7 @@ start_link() ->
 
 %%--------------------------------------------------------------------
 init([]) ->
+    error_logger:info_report("erlproject_supervisor:init"),
     RestartStrategy = one_for_one,
     MaxRestarts = 1000,
 
@@ -36,17 +39,17 @@ init([]) ->
     Type = worker,
 
     CUnit = {erlproject_cunit , {erlproject_cunit , start_link , []},
-             Restart , Shutdown , worker, [erlproject_cunit]},
+             Restart , Shutdown , Type, [erlproject_cunit]},
     DB = {erlproject_db , {erlproject_db , start_link , []},
-          Restart , Shutdown , worker , [erlproject_db]},
+          Restart , Shutdown , Type , [erlproject_db]},
 
     My_Sql = {mysql , {mysql , 
                        start_link , 
-                       [p1, "127.0.0.1", 
-                        3306,"evabihari", "ethebi1", "erlproject"
+                       [p1, ?HOST, 
+                        ?PORT,?USER, ?PWD, ?PROJECT
                        ]
 		      },
-	      Restart , Shutdown , worker, [mysql]},
+	      Restart , Shutdown , Type, [mysql]},
     {ok, {SupFlags, [My_Sql,DB,CUnit]}}.
 
 %%%===================================================================

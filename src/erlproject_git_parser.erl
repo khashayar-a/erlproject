@@ -35,24 +35,29 @@ crawl(From,{git, Url}) ->
             getInformation(From, ParsedList),
  	    gen_server:cast(erlproject_cunit, {next, {git,Next}});           
 	{error,Reason} ->
+            error_logger:info_report("erlproject_git_parser error received",
+                                     [{error,Reason}]),
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}});
 	_ ->
-	    io:format("erlproject_git_parser SOMETHING IS HAPPENING ~p~n" , [Url]),
-            error_logger:info_report("erlproject_git_parser SOMETHING IS HAPPENING",[{url,Url}])
+            error_logger:info_report(
+              "erlproject_git_parser SOMETHING IS HAPPENING",[{url,Url}])
     end.
 
 parse(git, List) ->
-    Auth = "?access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
+    Auth = "?access_token=" ++ ?GITHUB_ACCESS_TOKEN,
     Extract = fun(X) -> 
 		      erlproject_funs:extract(git,X) 
 	      end, 
     Res = lists:map(Extract , List),
     Cast = fun(X) -> 
                    R = case gen_server:call(erlproject_db,
-                                            {get_value,{git,"updated_at","id", X#git.id}}) of
+                                            {get_value,
+                                             {git,"updated_at",
+                                              "id", X#git.id}}) of
                            {value, Last_updated} -> 
                                update_needed(X#git.updated_at,Last_updated);
-                           %% updated_at filed in the stored data not smaller than the actual
+                           %% updated_at filed in the stored data not 
+                           %% smaller than the actual
                            _Other -> 
                                true  %% update needed
                        end,
@@ -71,11 +76,10 @@ parse(git, List) ->
 getInformation(_From, []) ->
     ok;
 getInformation(From,[{[],_}|Tail]) ->
-    %% skip language and commit data as no update has happened after our last update
-    ?Log("getInformation",{languages, []}),
+    %% skip language and commit data as no update has happened 
+    %%after our last update
     getInformation(From,Tail);
 getInformation(From,[{Languages,Commits}|Tail]) ->
-    ?Log("getInformation",{languages, Languages}),
     case read_language(Languages) of
         success -> case read_commits(Commits) of
                        ok -> ok,
@@ -114,7 +118,6 @@ read_language(Languages) ->
     end.
 
 read_commits(Commits) ->
-    ?Log("commits",{commits, Commits}),
     case erlproject_funs:read_web(default,Commits) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 
@@ -151,7 +154,8 @@ update_needed(Actual,Stored) ->
 
 
 create_date(Actual) ->
-    [A_year,A_month,A_day,A_hour,A_minute,A_sec|_] = string:tokens(Actual,"T-:Z"),
+    [A_year,A_month,A_day,A_hour,A_minute,A_sec|_] = 
+        string:tokens(Actual,"T-:Z"),
     {{to_integer(A_year),to_integer(A_month),to_integer(A_day)},
      {to_integer(A_hour),to_integer(A_minute),to_integer(A_sec)}}.
 

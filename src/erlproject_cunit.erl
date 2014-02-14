@@ -20,7 +20,7 @@
 
 -export([epoch_now/0]).
                                                 % just for test
--export([gen_url/1,  check_other_parser/0, kill_other_parsers/0]).
+-export([gen_url/1,  check_other_parser/0, kill_other_parsers/0, check_socket_closed/1]).
 
 -include("records.hrl").
 
@@ -49,14 +49,6 @@ handle_call(_Request, _From, State) ->
 handle_cast({next, Url}, State) ->
     erlproject_parser:start(Url),
     {noreply, State};
-%% git parsing redesigned to a sequential issue
-%% handle_cast({language, Url}, State) ->
-%%     erlproject_parser:start(Url),
-%%     {noreply, State};
-%% git parsing redesigned to a sequential issue
-%% handle_cast({commit, Url}, State) ->
-%%     erlproject_parser:start(Url),
-%%     {noreply, State};
 handle_cast(last, []) ->
     error_logger:info_report(["Round Compelete",{time,calendar:local_time()}]),
     % wait 1 hour before starting next round
@@ -71,11 +63,22 @@ handle_cast(last, []) ->
     erlproject_parser:start(gen_url(hd(State))),
     {noreply, tl(State)};
 handle_cast(last, State) ->
-    %% error_logger:info_report(["last received",{reason,hd(State)}]),
     erlproject_parser:start(gen_url(hd(State))),
     {noreply, tl(State)};
 handle_cast({database, Reason}, State) ->
-    error_logger:info_report(["Database",{reason,Reason}]),
+    case check_socket_closed(Reason) of
+        socket_closed ->
+            %% tcp socket to mysql has been closed, crash mysql dispatcher to restart it
+            open_sql();
+        _ ->
+            ok
+    end,
+    N = check_other_parser(),
+    ?Log("Database",[{reason,Reason},{no_of_parsers,N}]),
+    if (N<1) ->
+            erlproject_parser:start(gen_url(hd(State)));
+       true  -> ok
+    end,    
     {noreply, State};
 handle_cast({wait, T, Url}, State) ->
     Now = epoch_now(),
@@ -95,17 +98,39 @@ handle_cast({error,Reason},[]) ->
     State = erlproject_funs:source_gen(calendar:universal_time()),
     error_logger:info_report(["Unknown Error",{reason,Reason}]),
     case check_other_parser() of
-        N when (N <2)  -> %% new process to be started if ther is no other parsing process exist
+        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
             erlproject_parser:start(gen_url(hd(State)));
 
         _ -> ok
-    end,    {noreply, tl(State)};
+    end,    
+    {noreply, tl(State)};
 
 handle_cast({error,Reason},State) ->
     N =  check_other_parser(),
     error_logger:info_report(["Unknown Error with State",{reason,Reason},{state,hd(State)},{no_of_parsers,N}]),
     case N of
-        N when (N <2)  -> %% new process to be started if there is no other parsing process exist
+        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
+            erlproject_parser:start(gen_url(hd(State)));
+        _ -> ok
+    end,
+    {noreply, tl(State)};
+
+handle_cast({continue_parsing},[]) ->
+    N =  check_other_parser(),
+    error_logger:info_report(["continue parsing, State = []",{no_of_parsers,N}]),
+    State = erlproject_funs:source_gen(calendar:universal_time()),
+    case N of
+        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
+            erlproject_parser:start(gen_url(hd(State)));
+        _ -> ok
+    end,
+    {noreply, tl(State)};
+
+handle_cast({continue_parsing},State) ->
+    N =  check_other_parser(),
+    error_logger:info_report(["continue parsing",{no_of_parsers,N}]),
+    case N of
+        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
             erlproject_parser:start(gen_url(hd(State)));
         _ -> ok
     end,
@@ -143,13 +168,13 @@ gen_url(google) ->
      "https://code.google.com/hosting/search?"++
 	 "q=label%3Aerlang&filter=0&mode=&start=0"};
 gen_url({l,C}) ->
-    Auth = "&access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
+    Auth = "&access_token=" ++ ?GITHUB_ACCESS_TOKEN,
     Page = "&page=1&per_page=100", 
     Src = "https://api.github.com/search/repositories",
     Query = "?q=language:erlang+created:",
     {git,Src ++ Query ++ C ++ Page ++ Auth};
 gen_url({s,C}) ->
-    Auth = "&access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
+    Auth = "&access_token=" ++ ?GITHUB_ACCESS_TOKEN,
     Page = "&page=1&per_page=100",
     Src = "https://api.github.com/search/repositories",
     Query = "?q=erlang+created:",
@@ -197,3 +222,22 @@ kill_other_parsers([Pid|Pids]) ->
         _ -> kill_other_parsers(Pids)
     end.    
 
+check_socket_closed([]) -> 
+    not_socket_closed;
+check_socket_closed(["closed"]) ->
+    socket_closed;
+check_socket_closed([_L|H]) ->
+    check_socket_closed(H);
+check_socket_closed(_) ->
+       not_socket_closed.
+ 
+
+open_sql() ->
+    %% erlproject_funs:connect().
+    case whereis(mysql_dispatcher) of
+        undefined -> %mysql dispatcher not running yet, no need to exit
+            ok;
+        Pid ->
+            error_logger:info_report(["exit from mysql_dispatcher"]),
+            erlang:exit(Pid,{error,mysql_restart})
+    end.

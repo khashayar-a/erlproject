@@ -22,31 +22,12 @@ start(Url) ->
     spawn(erlproject_parser, init, [Url]).
 
 init({Source,Url}) ->
-    error_logger:info_report("erlproject_parser:init",{source, Source}),
+    ?Log("erlproject_parser:init",[{source, Source}]),
     crawl(Source,Url).
 crawl(git, Url) ->
     erlproject_git_parser:start(Url);
 
-%% git requests are handled in a different module to avoid process floods 
-%% crawl(git, Url) ->
-%%     ?L("erlproject_parser:crawl, git, Url = ",{reason, Url}),
-%%     case erlproject_funs:read_web(git,Url) of
-%% 	{limit, T} ->
-%% 	    gen_server:cast(erlproject_cunit, {wait, T, {git,Url}}); 
-%% 	{success, last, List} ->
-%%     	    gen_server:cast(erlproject_cunit, last),
-%% 	    parse(git, List);
-%% 	{success, Next, List} ->
-%% 	    gen_server:cast(erlproject_cunit, {next, {git,Next}}),
-%% 	    parse(git, List);
-%% 	{error,Reason} ->
-%% 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}});
-%% 	_ ->
-%% 	    io:format("SOMETHING IS HAPPENING ~p~n" , [Url])
-%%     end;
-
 crawl(git_language, Url) ->
-    %%   error_logger:info_report(["crawl git_language", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 
@@ -66,7 +47,7 @@ crawl(git_language, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;    
 crawl(git_commit, Url) ->
-    %%   error_logger:info_report(["crawl git_commit", {url, Url}]),
+    ?Log("crawl git_commit", [{url, Url}]),
     case erlproject_funs:read_web(default,Url) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 
@@ -163,23 +144,24 @@ crawl(bbapi,Url) ->
             gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end.
 
-parse(git, List) ->
-    Auth = "?access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
-    Extract = fun(X) -> 
-		      erlproject_funs:extract(git,X) 
-	      end, 
-    Res = lists:map(Extract , List),
-    Cast = fun(X) -> 
-		   Languages = X#git.languages_url ++ Auth,
-		   Commits = hd(string:tokens(X#git.commits_url, "{")) 
-                       ++ Auth ++ "&per_page=3",
-		   gen_server:cast(erlproject_cunit, 
-				   {language, {git_language, Languages}}),
-		   gen_server:cast(erlproject_cunit, 
-				   {commit, {git_commit, Commits}}),
-		   gen_server:cast(erlproject_db,{write, git,  X}) 
-	   end,
-    lists:foreach(Cast, Res);
+%% parse(git, List) ->
+%%     %% Auth = "?access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
+%%     Auth = "?access_token=" ++ ?GITHUB_ACCESS_TOKEN,
+%%     Extract = fun(X) -> 
+%% 		      erlproject_funs:extract(git,X) 
+%% 	      end, 
+%%     Res = lists:map(Extract , List),
+%%     Cast = fun(X) -> 
+%% 		   Languages = X#git.languages_url ++ Auth,
+%% 		   Commits = hd(string:tokens(X#git.commits_url, "{")) 
+%%                        ++ Auth ++ "&per_page=3",
+%% 		   gen_server:cast(erlproject_cunit, 
+%% 				   {language, {git_language, Languages}}),
+%% 		   gen_server:cast(erlproject_cunit, 
+%% 				   {commit, {git_commit, Commits}}),
+%% 		   gen_server:cast(erlproject_db,{write, git,  X}) 
+%% 	   end,
+%%     lists:foreach(Cast, Res);
 
 parse(git_commit, List) ->
     Extract = fun(X) ->
@@ -228,8 +210,8 @@ parse(sfapi,Body) ->
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, sfapi,  Data}); 
 	Reason ->
-	    error_logger:info_report(["Parsing SF MOCHI",
-				      {reason,Reason},{body,mochijson:decode(Body)} ])	   
+	    ?Log("Parsing SF MOCHI",
+                 [{reason,Reason},{body,mochijson:decode(Body)} ])	   
 
     end;
 
@@ -238,8 +220,7 @@ parse(bitbucket, Links) ->
 					   {"class" ,"avatar-link"},
 					   "href"),
     Extract = fun(X) ->
-		      "https://bitbucket.org/api/1.0/repositories" ++
-			  X
+		      "https://bitbucket.org/api/1.0/repositories" ++ X
 	      end,
     Res = lists:map(Extract,Projects),
     Spawn = fun(X) ->
@@ -252,9 +233,8 @@ parse(bbapi,Body) ->
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, bbapi,  Data}); 
 	Reason ->
-	    error_logger:info_report(["Parsing BB MOCHI",
-				      {reason,Reason},
-                                     {body,mochijson:decode(Body)}])	   
+	    ?Log("Parsing BB MOCHI",
+                 [{reason,Reason},{body,mochijson:decode(Body)}])	   
 
     end.
 
