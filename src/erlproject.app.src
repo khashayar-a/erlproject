@@ -1,0 +1,15 @@
+{application, erlproject,
+ [
+  {description, "Erlang project crawler"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+		  %crypto,
+		  %emysql,
+		  %erlproj_crawler
+                 ]},
+  {mod, { erlproject_app, []}},
+  {env, []}
+ ]}.

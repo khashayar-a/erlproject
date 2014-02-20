@@ -268,7 +268,10 @@ extract_owner({struct, List}) ->
 %%%     A Link generator for different sources
 %%% @end
 source_gen({{Year,Month,_},_}) ->
-    [bitbucket,sourceforge,google]++source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
+     [bitbucket,sourceforge,google]++
+         source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
+%% source_gen({{Year,Month,_},_}) ->
+%%    source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
 source_gen(Y,M,Y,M,Buff)->
     Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}]; 
 	     
@@ -277,10 +280,6 @@ source_gen(Y,M,Y,M,Buff)->
 %% source_gen({{Year,Month,_},_}) ->
 %%     [sourceforge,bitbucket].
 
-%% source_gen({{Year,Month,_},_}) ->
-%%     [ sourceforge, google,bitbucket ]++source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
-%% source_gen(Y,M,Y,M,Buff)->
-%%     Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}];
 
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
@@ -477,19 +476,36 @@ month_num(_) ->
 connect() ->
    case whereis(erlproject_cunit) of
        undefined -> 
-                                                %initial start don't need to do anything
+                                                % initial start don't need to do anything
            ok;
        _Pid -> 
-                                                %erlproject_db was crashed -> if parser crashed as well it needs to be restarted
+                                                % erlproject_db was crashed -> 
+                                                %  if parser crashed as well it needs to be restarted
            ?Log("send continue_parsing message",[]),
+           timer:sleep(1000), 
+                                                %% wait a bit while mysql can be up again
            gen_server:cast(erlproject_cunit, {continue_parsing})
    end,
 
    ?Log("erlproject_db:connect",[]),
      %% start creates a gen_server process which is not
      %% part of a supervision tree
-    mysql:start(p1, ?HOST, ?PORT, ?USER, ?PWD, ?PROJECT).
+    try 
+        case emysql:add_pool(p1, 1,  ?USER, ?PWD, ?HOST, ?PORT,?PROJECT, utf8) of
+            ok ->  {ok, whereis(emysql_conn_mgr)};
+            {reply, ok, _ } ->
+                {ok, whereis(emysql_conn_mgr)};
+            {reply, {error, pool_already_exists}, _} ->
+                {error, already_started};
+            {_,Reason} -> {error,Reason}
+        end
+    catch
+        exit:pool_already_exists ->
+            {ok,  whereis(emysql_conn_mgr)}
+    end.
 
+            
+                
 %% Return a list of all tcp sockets
 tcp_sockets() -> port_list("tcp_inet").
 udp_sockets() -> port_list("udp_inet").

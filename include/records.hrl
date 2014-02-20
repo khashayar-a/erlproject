@@ -7,23 +7,23 @@
 
 -record(commit, {sha, author, date, url, message}).
 
-- ifdef(debug1).
+ - ifdef(debug1).
 - define(L(Msg,Parameters), error_logger:info_report([Msg,Parameters])).
-- else.
-- define(L(Msg,Parameters), ok).
+ - else.
+ - define(L(Msg,Parameters), ok).
 - endif.
 
-- ifdef(debug1).
+ - ifdef(debug1).
 - define( Log(Msg,Parameters), error_logger:info_report([Msg,Parameters])).
-- else.
-- define( Log(Msg,Parameters), ok).
-- endif.
+ - else.
+ - define( Log(Msg,Parameters), ok).
+ - endif.
 
 -define(SOURCEFORGE_OVERLOAD, "Too many requests, please try again later.").
 %% Khashayar's token
--define(GITHUB_ACCESS_TOKEN, "e62fdebb6e20c178dd30febcc7126e06367dd975").
+%%-define(GITHUB_ACCESS_TOKEN, "e62fdebb6e20c178dd30febcc7126e06367dd975").
 %% Eva's access token
-%% -define(GITHUB_ACCESS_TOKEN, "743619cbf02d739b3ed678ec6d748afb394618f4").
+-define(GITHUB_ACCESS_TOKEN, "743619cbf02d739b3ed678ec6d748afb394618f4").
 
 %% mySQL settings for local computer:
 

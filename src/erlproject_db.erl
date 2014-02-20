@@ -23,6 +23,7 @@
 -define(SERVER, ?MODULE). 
 
 -include("records.hrl").
+-include("deps/emysql/include/emysql.hrl").
 
 -define(DATE_LENGTH, 10).
 -define(TIME_LENGTH, 8).
@@ -36,13 +37,18 @@ start_link() ->
 init([]) ->  
      ?Log("erlproject_db:init",[]),
      R1= case erlproject_funs:connect() of
-        {ok,Pid} ->  ?Log("connect successful",[{pid,Pid}]),
+        {ok,_Pid} 
+             ->  ?Log("connect successful",[{pid,_Pid}]),
                  {ok,[]};
-        {error, {already_started,_}} -> %mysql was already started by other service, it's ok
-                 error_logger:info_report("my_sql already started",{reason,"already_started"}),
+                  
+        {error, {already_started,_}} ->  
+                 %emysql was already started by other service, it's ok
+                 error_logger:info_report("my_sql already started",
+                                          {reason,"already_started"}),
                  {ok,[]}; 
         {error, Reason} ->
-                 error_logger:info_report("Starting my_sql failed",{reason,Reason}),
+                 error_logger:info_report("Starting my_sql failed",
+                                          {reason,Reason}),
                  {error, Reason}
          end,
     R1.
@@ -58,8 +64,11 @@ handle_call({get_value,{git, ReturnField, FilterField, Value}}, _From, State) ->
                  {ok,[[undefined]|_]} -> {novalue, undefined};
                  {ok,[]} ->  {novalue, undefined};
                  {ok, [[]|_]} -> {novalue, undefined};
-                 {ok, [[BinValue]|_]} ->  
-                     %% example: [[<<"2013-10-14T11:55:36Z">>]]
+                %% {ok, [[BinValue]|_]} ->  
+                 {ok, BinList} when is_list(BinList) ->
+                     {value, binary_to_list(hd(BinList))};
+                 {ok, BinValue} ->
+                     %% example: <<"2013-10-14T11:55:36Z">>
                      {value, binary_to_list(BinValue)}
              end,
     {reply, Result, State};
@@ -109,8 +118,12 @@ handle_cast({write, git_language, Data}, State) ->
 
 handle_cast({write, git_commit, Data}, State) ->
     ?Log("erlproject_db, handle_cast, write, git_commit ",[{data,Data}]),
+
     Query = gen_query(git_commit, Data),
-    Res = query_function(write,Query),
+    Uni=unicode:characters_to_binary(Query, utf8),
+    Res = query_function(write,Uni),
+            ?Log("query_function result",[{result,Res}]),
+
     case Res of
 	ok ->
 	    {noreply, State};
@@ -158,8 +171,8 @@ handle_cast(Msg, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(Reason, _State) ->
-    ?Log("erlproject_db terminate",[{reason,Reason}]),
+terminate(_Reason, _State) ->
+    ?Log("erlproject_db terminate",[{reason,_Reason}]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -170,22 +183,25 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 query_function(write, Q) ->
     ?Log("erlproject_db, query_function, write ",[{data,Q}]),
-    try mysql:fetch(p1, Q) of
-	Result ->
-            case Result of
-                {R,{_,_,_,_,_,_,_,_}} -> 
+    %% try mysql:fetch(p1, Q) of
+    try 
+        R = emysql:execute(p1, Q),
+            get_result(R)
+	%% Result ->
+        %%     case Result of
+        %%         {R,{_,_,_,_,_,_,_,_}} -> 
 
-                    case R of
-                        updated ->
-                            ok;
-                        error ->
-                            {error, {sql_syntax,Q}};
-                        _ ->
-                            {error,  Result}
-                    end;
-                {error,R2} ->
-                    {error,R2}
-	    end
+        %%             case R of
+        %%                 updated ->
+        %%                     ok;
+        %%                 error ->
+        %%                     {error, {sql_syntax,Q}};
+        %%                 _ ->
+        %%                     {error,  Result}
+        %%             end;
+        %%         {error_packet,R2} ->
+        %%             {error,R2}
+	%%     end
     catch
         exit:Exit ->
             ?Log("query_function(write,Q) got exit",[{exit,Exit}]),
@@ -194,10 +210,10 @@ query_function(write, Q) ->
 query_function(get, Q) ->
     ?Log("erlproject_db, query_function, get ",[{data,Q}]),
     try 
-        case mysql:fetch(p1, Q) of
-            {data,MySqlRes} ->
-                {ok, mysql:get_result_rows(MySqlRes)};
-            R -> {error, R}
+        Result = emysql:execute(p1, Q),
+        case get_result(Result) of
+            undefined -> [];
+            Value -> Value
         end
     catch
 	exit:Exit ->
@@ -206,21 +222,22 @@ query_function(get, Q) ->
     end;                    
 query_function(select,Q) ->
     ?Log("erlproject_db, query_function, select ",[{data,Q}]),
-   try mysql:fetch(p1, Q) of
-	Result ->
-            case Result of
-                {R,{_,_,Res,_,_,_,_,_}} -> 
-                    case R of
-                        data ->
-                            {ok, Res};
-                        error ->
-                            {error, {reason,Result}};
-                        _ ->
-                            {error, R}
-                    end;
-                {error,R2} ->
-                    {error,R2}
-	    end
+   try 
+       R= emysql:execute(p1, Q),
+       get_result(R)
+            %% case Result of
+            %%     {R,{_,_,Res,_,_,_,_,_}} -> 
+            %%         case R of
+            %%             data ->
+            %%                 {ok, Res};
+            %%             error ->
+            %%                 {error, {reason,Result}};
+            %%             _ ->
+            %%                 {error, R}
+            %%         end;
+            %%     {error,R2} ->
+            %%         {error,R2}
+            %% end
     catch
 	exit:Exit ->
 	%%     {error, no_connection}
@@ -230,21 +247,22 @@ query_function(select,Q) ->
     end;
 
 query_function(delete,Q) ->
-   try mysql:fetch(p1, Q) of
-	Result ->
-            case Result of
-                {R,{_,_,_Re_,_,_,_,_,_}} -> 
-                    case R of
-                        updated ->
-                            ok;
-                        error ->
-                            {error, {sql_syntax,Q}};
-                        _ ->
-                            {error, R}
-                    end;
-                {error,R2} ->
-                    {error,R2}
-	    end
+   try 
+       R = emysql:execute(p1, Q),
+       get_result(R)
+            %% case Result of
+            %%     {R,{_,_,_Re_,_,_,_,_,_}} -> 
+            %%         case R of
+            %%             updated ->
+            %%                 ok;
+            %%             error ->
+            %%                 {error, {sql_syntax,Q}};
+            %%             _ ->
+            %%                 {error, R}
+            %%         end;
+            %%     {error,R2} ->
+            %%         {error,R2}
+	    %% end
     catch
 	exit:Exit ->
             ?Log("query_function(delete,Q) got exit",[{exit,Exit}]),
@@ -312,15 +330,16 @@ gen_query(git_commit, {Number,Data}) ->
 	"(select id from erlproject_git where full_name = '" ++
 	Name ++ "') , '" ++
 	Data#commit.sha ++ "' , '" ++
-	fix(Data#commit.author) ++ "' , '" ++
+	fix_unicode(Data#commit.author) ++ "' , '" ++
+        %% try to use unicode for author names 
 	Data#commit.date ++ "' , '" ++
 	Data#commit.url ++ "' , '" ++
-	fix_comment(fix(Data#commit.message)) ++ "') on duplicate key update " ++ 
+	fix_comment(fix_unicode(Data#commit.message)) ++ "') on duplicate key update " ++ 
 	"sha = '" ++ Data#commit.sha ++ 
-	"' , author = '" ++ fix(Data#commit.author) ++ 
+	"' , author = '" ++ fix_unicode(Data#commit.author) ++ 
 	"' , date = '" ++ Data#commit.date ++ 
 	"' , url = '" ++ Data#commit.url ++ 
-	"' , message = '" ++ fix_comment(fix(Data#commit.message)) ++ "'";
+	"' , message = '" ++ fix_comment(fix_unicode(Data#commit.message)) ++ "'";
 
 gen_query(git_commit_delete, Name) ->
     "delete from erlproject_commits where id = " ++
@@ -347,7 +366,7 @@ gen_query(google, Data = #git{}) ->
         Data#git.name  ++ "' , '" ++
         fix(Data#git.full_name)  ++ "' , '" ++
         Data#git.html_url  ++ "' , '" ++
-        fix(Data#git.description)  ++ "' , '" ++
+        fix_unicode(Data#git.description)  ++ "' , '" ++
         Data#git.languages  ++ "' , '" ++
         fix(Data#git.updated_at)  ++ "' , '" ++
 	integer_to_list(Data#git.watchers)  ++ "'," ++
@@ -363,9 +382,9 @@ gen_query(sfapi, Data = #git{}) ->
 	" stars, source) values ('" ++
 	integer_to_list(Data#git.id) ++ "' , '" ++
         Data#git.name  ++ "' , '" ++
-        fix(Data#git.full_name)  ++ "' , '" ++
+        fix_unicode(Data#git.full_name)  ++ "' , '" ++
         Data#git.html_url  ++ "' , '" ++
-        fix(Data#git.description)  ++ "' , '" ++
+        fix_unicode(Data#git.description)  ++ "' , '" ++
         fix(Data#git.languages)  ++ "' , '" ++
         fix(Data#git.created_at)  ++ "' , '" ++
 	integer_to_list(Data#git.watchers)  ++ "'," ++
@@ -380,7 +399,7 @@ gen_query(bbapi, Data = #git{}) ->
         Data#git.name  ++ "' , '" ++
         fix(Data#git.full_name)  ++ "' , '" ++
         Data#git.html_url  ++ "' , '" ++
-        fix(Data#git.description)  ++ "' , '" ++
+        fix_unicode(Data#git.description)  ++ "' , '" ++
         fix(Data#git.languages)  ++ "' , '" ++
         fix(bbapi_date,Data#git.created_at)  ++ "' , '" ++
         fix(bbapi_date,Data#git.updated_at)  ++ "' , '" ++
@@ -396,7 +415,8 @@ gen_query(get_value,{git, ReturnField, Field, Value}) ->
     "SELECT "++ ReturnField ++ " from erlproject_git where "++Field++" = '" ++ Value++"'".
 
 fix_comment(String) ->
-    S1 = re:replace(String,"'","", [global,{return,list}]),
+    S1 = re:replace(unicode:characters_to_binary(String),"'","", 
+                    [global,{return,list}]),
     A=re:replace(S1,"\\\\","", [global,{return,list}]),
     re:replace(re:replace(A, "\\s+$", "", [global,{return,list}]), "^\\s+", "", [global,{return,list}]).
 
@@ -439,10 +459,36 @@ fix([34|T], Buff) ->
 fix([H|T], Buff) when is_list(H)->
     fix(T, Buff ++ fix(H,[]));
 
-fix([H|T], Buff) when H < 127->
-    fix(T, Buff ++ [H]);
-fix([_|T], Buff) ->
-    fix(T, Buff).
+ fix([H|T], Buff) when H < 127->
+      fix(T, Buff ++ [H]);
+
+ fix([_|T], Buff) ->
+     fix(T, Buff).
+
+%% fix([H|T], Buff) ->
+%%      fix(T, Buff ++ [H]).
+
+
+fix_unicode(undefined) ->
+    [];
+fix_unicode(T) ->
+    fix_unicode(T,[]).
+fix_unicode([], Buff) ->
+    Buff;
+fix_unicode([39|T], Buff) ->
+    fix_unicode(T, Buff ++ [92, 39]);
+fix_unicode([34|T], Buff) ->
+    fix_unicode(T, Buff ++ [92, 34]);
+
+fix_unicode([H|T], Buff) when is_list(H)->
+    fix_unicode(T, Buff ++ fix_unicode(H,[]));
+
+
+fix_unicode([H|T], Buff) when H < 1000 ->
+      fix_unicode(T, Buff ++ [H]);
+
+fix_unicode([_H|T], Buff) ->
+     fix_unicode(T, Buff).
 
 
 fix_clarity(Data= #git{}) ->
@@ -459,7 +505,7 @@ fix_clarity(Data= #git{}) ->
         {ok,[]} ->
             %% ?Log("fix_clarity",{url,Data#git.html_url}),
             ok;
-        {ok,List} ->
+        {ok,List} when is_list(List) ->
             %% ?Log("fix_clarity",{ids,List}),
 
             case length(lists:flatten(List)) of 
@@ -469,7 +515,8 @@ fix_clarity(Data= #git{}) ->
                     error_logger:info_report(["More than 1 git_project",
                                               {url,Data#git.html_url},{ids,List}]),
                     remove_projects(lists:flatten(List))
-            end
+            end;
+        _ -> ok 
     end.
     
 remove_projects([]) ->
@@ -485,4 +532,25 @@ integer_to_list2(X) ->
     integer_to_list(X).
 
                              
-    
+get_result(Result) when is_record(Result, result_packet) ->
+    case emysql_util:as_json(Result) of
+        [] -> {ok,[]};
+        [[{_,Data}]] -> {ok,Data};
+        Other -> {ok,encode(Other)}
+    end;
+get_result(Result) when is_record(Result, error_packet) ->
+    {error,{reason,Result#error_packet.msg}};
+get_result(Result) when is_record(Result, ok_packet) ->
+   ok;
+get_result(Result) ->
+    {error,Result}.
+
+encode([]) -> [];
+encode([[{_,Data}]|List]) -> 
+%% encode(Data)
+%% Input: emysql_util:as_json(RS).
+%% [[{<<"author">>,<<"Tom Preston-Werner">>}],
+%%  [{<<"author">>,<<"Tom Preston-Werner">>}],
+%%  [{<<"author">>,<<"David Fayram">>}]]    
+%% Output -> [] / [ResultList]
+    [Data|encode(List)].

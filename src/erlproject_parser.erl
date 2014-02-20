@@ -209,9 +209,9 @@ parse(sfapi,Body) ->
     case erlproject_funs:extract(sfapi, mochijson:decode(Body)) of
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, sfapi,  Data}); 
-	Reason ->
+	_Reason ->
 	    ?Log("Parsing SF MOCHI",
-                 [{reason,Reason},{body,mochijson:decode(Body)} ])	   
+                 [{reason,_Reason},{body,mochijson:decode(Body)} ])	   
 
     end;
 
@@ -232,9 +232,9 @@ parse(bbapi,Body) ->
     case erlproject_funs:extract(bbapi, mochijson:decode(Body)) of
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, bbapi,  Data}); 
-	Reason ->
+	_Reason ->
 	    ?Log("Parsing BB MOCHI",
-                 [{reason,Reason},{body,mochijson:decode(Body)}])	   
+                 [{reason,_Reason},{body,mochijson:decode(Body)}])	   
 
     end.
 

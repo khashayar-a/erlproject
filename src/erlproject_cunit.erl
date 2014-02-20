@@ -20,7 +20,8 @@
 
 -export([epoch_now/0]).
                                                 % just for test
--export([gen_url/1,  check_other_parser/0, kill_other_parsers/0, check_socket_closed/1]).
+-export([gen_url/1,  check_other_parser/0, kill_other_parsers/0, 
+         check_socket_closed/1, get_status/0]).
 
 -include("records.hrl").
 
@@ -33,6 +34,7 @@ start_link() ->
 
 %%-------------------------------------------------------------------
 init([]) ->
+    error_logger:info_report("erlproj_cunit:init"),
     State = erlproject_funs:source_gen(calendar:universal_time()),
     erlproject_parser:start(gen_url(hd(State))),
     ?L("Spawn",[{url,gen_url(hd(State))}]),
@@ -40,6 +42,8 @@ init([]) ->
 
 
 %%--------------------------------------------------------------------
+handle_call({get_status},_From, State) ->
+    {reply, State, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -83,6 +87,8 @@ handle_cast({database, Reason}, State) ->
 handle_cast({wait, T, Url}, State) ->
     Now = epoch_now(),
     ?Log("Waiting",[{sec, T-Now},{time,calendar:local_time()}]),
+    error_logger:info_report("Waiting",[{sec, T-Now},{time,calendar:local_time()}]),
+
     if T>Now ->
             timer:sleep( max(T - Now,1) * 1000);
        true -> ok
@@ -94,9 +100,9 @@ handle_cast({wait, T, Url}, State) ->
     end,
     {noreply, State}; 
 
-handle_cast({error,Reason},[]) ->
+handle_cast({error,_Reason},[]) ->
     State = erlproject_funs:source_gen(calendar:universal_time()),
-    error_logger:info_report(["Unknown Error",{reason,Reason}]),
+    ?Log("Unknown Error",[{reason,_Reason}]),
     case check_other_parser() of
         N when (N <1)  -> %% new process to be started if there is no other parsing process exist
             erlproject_parser:start(gen_url(hd(State)));
@@ -105,11 +111,14 @@ handle_cast({error,Reason},[]) ->
     end,    
     {noreply, tl(State)};
 
-handle_cast({error,Reason},State) ->
+handle_cast({error,_Reason},State) ->
     N =  check_other_parser(),
-    error_logger:info_report(["Unknown Error with State",{reason,Reason},{state,hd(State)},{no_of_parsers,N}]),
+    ?Log("Unknown Error with State",
+         [{reason,_Reason},{state,hd(State)},{no_of_parsers,N}]),
     case N of
-        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
+        N when (N <1)  -> 
+            %% new process to be started if there is no other 
+            %% parsing process exist
             erlproject_parser:start(gen_url(hd(State)));
         _ -> ok
     end,
@@ -117,10 +126,13 @@ handle_cast({error,Reason},State) ->
 
 handle_cast({continue_parsing},[]) ->
     N =  check_other_parser(),
-    error_logger:info_report(["continue parsing, State = []",{no_of_parsers,N}]),
     State = erlproject_funs:source_gen(calendar:universal_time()),
     case N of
-        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
+        N when (N <1)  -> 
+            %% new process to be started if there is 
+            %% no other parsing process exist
+            error_logger:info_report(["continue parsing, State = []",
+                                      {no_of_parsers,N}]),
             erlproject_parser:start(gen_url(hd(State)));
         _ -> ok
     end,
@@ -128,9 +140,11 @@ handle_cast({continue_parsing},[]) ->
 
 handle_cast({continue_parsing},State) ->
     N =  check_other_parser(),
-    error_logger:info_report(["continue parsing",{no_of_parsers,N}]),
     case N of
-        N when (N <1)  -> %% new process to be started if there is no other parsing process exist
+        N when (N <1)  -> 
+            %% new process to be started if there is no other 
+            %% parsing process exist
+            error_logger:info_report(["continue parsing",{no_of_parsers,N}]),
             erlproject_parser:start(gen_url(hd(State)));
         _ -> ok
     end,
@@ -230,7 +244,6 @@ check_socket_closed([_L|H]) ->
     check_socket_closed(H);
 check_socket_closed(_) ->
        not_socket_closed.
- 
 
 open_sql() ->
     %% erlproject_funs:connect().
@@ -240,4 +253,18 @@ open_sql() ->
         Pid ->
             error_logger:info_report(["exit from mysql_dispatcher"]),
             erlang:exit(Pid,{error,mysql_restart})
+    end.
+
+get_status() ->
+    try
+     gen_server:call(erlproject_cunit,{get_status}, 5)
+    catch
+        exit:{timeout,_} ->
+            case check_other_parser() of
+                0 ->
+                    %% io:format("~p~n",[Exit]),
+                    "crawler is in waiting state after round completed";
+                _ ->
+                    "crawler in error state"
+            end
     end.
