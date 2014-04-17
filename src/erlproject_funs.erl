@@ -153,11 +153,40 @@ check(Header) ->
 %%% @doc
 %%%     Parsing material for json and html 
 %%% @end
+%% {struct,[{"total_count",763},
+%%          {"incomplete_results",false},
+%%          {"items",
+%%           {array,[{struct,[{"id",374927},
+%%                            {"name","otp"},
+%%                            {"full_name","erlang/otp"},
+%%                            {"owner",
+%%                             {struct,[{"login","erlang"},
+%%                                      {"id",153393},
+%% ...
 
-parse({struct,[{_,0},{_,{array, _List}}]}) ->
-    no_result;
-parse({struct,[{_,_X},{_,{array, List}}]}) ->
-    List;
+parse({struct,Struct}) ->
+    case lists:keysearch("total_count",1,Struct) of
+        false ->
+            {error,json_failed};
+        {value,{_,0}} ->    
+            no_result;
+        {value,{_,_N}} ->
+            case lists:keysearch("items",1,Struct) of
+                false ->
+                    {error,json_failed};
+                {value,{_,{array,List}}} ->
+                    List;
+                _Result ->
+                    {error,json_failed}
+            end
+    end;
+
+%% % parse({struct,[{_,0},{_,{array, _List}}]}) ->
+%% parse({struct,[{_,0},_,{_,{array, _List}}]}) ->
+%%     no_result;
+%% % parse({struct,[{_,_X},{_,{array, List}}]}) ->
+%% parse({struct,[{_,_X},_,{_,{array, List}}]}) ->
+%%     List;
 parse(_) ->
     {error,json_failed}.
 
