@@ -81,6 +81,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 
 handle_cast({write, git, Data = #git{}}, State) ->
+    lager:info("Writing to database"),
     ?Log("erlproject_db, handle_cast, write, git ",[{data,Data}]),
     fix_clarity(Data), 
     case gen_query(git, Data) of
