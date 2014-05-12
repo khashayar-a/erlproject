@@ -46,6 +46,11 @@ init([]) ->
                  error_logger:info_report("my_sql already started",
                                           {reason,"already_started"}),
                  {ok,[]}; 
+        {error, pool_already_exists} ->
+                 %emysql was already started by other service, it's ok
+                 error_logger:info_report("my_sql already started",
+                                          {reason,"already_started"}),
+                 {ok,[]};                  
         {error, Reason} ->
                  error_logger:info_report("Starting my_sql failed",
                                           {reason,Reason}),
@@ -81,7 +86,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 
 handle_cast({write, git, Data = #git{}}, State) ->
-    lager:info("Writing to database"),
+    %lager:info("Writing to database"),
     ?Log("erlproject_db, handle_cast, write, git ",[{data,Data}]),
     fix_clarity(Data), 
     case gen_query(git, Data) of
