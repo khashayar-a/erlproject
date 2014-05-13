@@ -526,6 +526,8 @@ connect() ->
                 {ok, whereis(emysql_conn_mgr)};
             {reply, {error, pool_already_exists}, _} ->
                 {error, already_started};
+            {error,pool_already_exist} ->
+                {ok, whereis(emysql_conn_mgr)};
             {_,Reason} -> {error,Reason}
         end
     catch
