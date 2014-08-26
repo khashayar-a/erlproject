@@ -7,12 +7,9 @@
 
 -module(erlproject_funs).
 
-%-export([read_web/2,convert_date/1, extract/1]).
-
 -compile(export_all).
 
 -include("records.hrl").
-
 
 %%%-------------------------------------------------------------------
 %%% @doc
@@ -21,63 +18,118 @@
 
 read_web(git,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
     case check(Headers) of
-	ok ->
-	    case parse(mochijson:decode(Body)) of
-		no_result ->
-		    {success, last, []};
-		Res ->
-		    case proplists:get_value("link",Headers) of
-			undefined ->
-			    {success, last, Res};
-			Links ->
-			    {success, grab_next(git, Links), Res}
-		    end
-	    end;
-	error ->
-	    {error,broken_html};
-	Limit ->
-	    {limit, Limit}
+	ok -> try parse(mochijson:decode(Body)) of
+                    no_result ->
+                              {success, last, []};
+                     Res ->
+                              case proplists:get_value("link",Headers) of
+                                  undefined ->
+                                      {success, last, Res};
+                                  Links ->
+                                      {success, grab_next(git, Links), Res}
+                              end
+              catch
+                  exit:_Exit ->
+                                  {error,_Exit}
+                end;
+     error ->
+                      {error,broken_html};
+     Limit ->
+                      {limit, Limit}
+
+
     end;
 
 read_web(default,{ok, {{_Version, _, _ReasonPhrase}, Headers, Body}}) ->
     {success,{Headers,Body}};    
+read_web(_,{error,socket_closed_remotely})->
+    ?Log("read_web(error,socket_closed_remotely)", {reason,socket_closed_remotely}),
+    {error,socket_closed_remotely};
 read_web(_,{error,no_scheme})->
+    ?Log("read_web(error,no_scheme)",{reason,no_scheme}),
     {error,broken_html};
 read_web(_,{error,{failed_connect,_}})->
+    ?Log("read_web(error,failed_connect)",{reason,connection_failed}),
     {error,connection_failed}; % broken link
 read_web(_,{error,{ehostdown,_}})->
+    ?Log("read_web(error,ehostdown)",{reason,host_is_down}),
     {error,host_is_down};
 read_web(_,{error,{ehostunreach,_}})->
+    ?Log("read_web(error,ehostunreach)",{reason,host_unreachable}),
     {error,host_unreachable};
 read_web(_,{error,{etimedout,_}})->
+    ?Log("read_web(error,etimedout)",{reason,connection_timed_out}),
+    {error,connection_timed_out};
+read_web(_,{error,timeout})->
+    ?Log("read_web(error,timeout)",{reason,connection_timed_out}),
     {error,connection_timed_out};
 read_web(_,{error,{ebadrqc,_}})->
+    ?Log("read_web(error,ebadrqc)",{reason,bad_request_code}),
     {error,bad_request_code};
 read_web(_,{error,{ecomm,_}})->
+    ?Log("read_web(error,ecomm)",{reason,communication_error}),
     {error, communication_error};
 read_web(_,{error,{econnrefused,_}})->
+    ?Log("read_web(error,econnrefused)",{reason,connection_refused}),
     {error, connection_refused};
 read_web(_,{error,{enetdown,_}})->
+    ?Log("read_web(error,enetdown)",{reason,network_down}),
     {error, network_down};
 read_web(_,{error,{enetunreach,_}})->
+    ?Log("read_web(error,enetunreach)",{reason,network_unreachable}),
     {error, network_unreachable};
 read_web(git,Src) ->
     ssl:start(),
     inets:start(),
-    read_web(git,httpc:request(get, 
-			   {Src, [{"User-Agent","Jable"},
-				  {"Accept","application/vnd.github.preview"}
-				 ]}, 
-			   [], []));
+    {A,Code} = try
+                   httpc:request(get, 
+                                 {Src, [{"User-Agent","Jable"},
+                                        {"Accept","application/vnd.github.preview"}
+                                       ]}, 
+                                 [{timeout,timer:seconds(20)}], []) of
+                   Answer -> {Answer,ok}
+               catch
+                   exit:R -> {{error,R},exit};
+                   error:R -> {{error,R},error}
+               end,
+    if not(Code == ok) ->
+            ?Log("read_web(git,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
+       true -> ok
+    end,
+    read_web(git,A);
+
+read_web(default,{error,Reason}) ->
+     ?Log("read_web(default,{error,Reason})",[{error,Reason},{module, ?MODULE},{line,?LINE}]),
+     ?Log("Waiting",[{sec, 60},{time,calendar:local_time()}]),
+     {error, Reason};
+
 read_web(default,Src) ->
     ssl:start(),
     inets:start(),
-    read_web(default,httpc:request(get, 
-			   {Src, [{"User-Agent","Jable"}
-				 ]}, 
-			   [], []));
+    {A,Code} = try
+                   httpc:request(get, 
+                                 {Src, [{"User-Agent","Jable"}
+                                       ]}, 
+                                 [{timeout,timer:seconds(30)}], []) of
+                   Answer -> {Answer,ok}
+               catch
+                   exit:R -> {{error,R},exit};
+                   error:R -> {{error,R},
+                               error}
+               end,
+    if not(Code == ok) ->
+            ?Log("read_web(default,src)",[{reason,Src},{answer,Code},{module, ?MODULE},{line,?LINE}]);
+       true -> ok
+    end,
+   % Need to handle the following case:
+   % A =          {error,
+             %% {could_not_parse_as_http,
+             %%     <<"HTTP/1.1 0\r\nDate: Wed, 08 Jan 2014 21:48:20 GMT\r\nStatus: 0\r\nConnection: close\r\nContent-Type: text/html;charset=utf-8\r\nX-RateLimit-Limit: 5000\r\nX-RateLimit-Remaining: 4871\r\nX-RateLimit-Reset: 1389221128\r\nX-Content-Type-Options: nosniff\r\nContent-Length: 0\r\nAccess-Control-Allow-Credentials: true\r\nAccess-Control-Expose-Headers: ETag, Link, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval\r\nAccess-Control-Allow-Origin: *\r\nX-GitHub-Request-Id: 51B7B182:06F3:7FF9E89:52CDC79A\r\n\r\n">>}}},
+    read_web(default,A);
+
 read_web(_,Reason) ->
-        {error,Reason}.
+    ?Log("read_web(_,Reason)",{reason,Reason}),
+             {error,Reason}.
 
 check(Header) ->
     case proplists:get_value("status", Header) of
@@ -85,7 +137,13 @@ check(Header) ->
 	    ok;
 	"403 Forbidden" ->
 	    T = proplists:get_value("x-ratelimit-reset",Header),
-	    list_to_integer(T);
+	    Limit = list_to_integer(T),
+            Now = erlproject_cunit:epoch_now(),
+            if Limit < Now  -> error;
+               true ->
+                   %%  error_logger:info_report(["check(Header) resulted T",{"x-ratelimit-reset",T},{header, Header}]),
+                    Limit
+            end;
 	_ ->
 	    error
     end.
@@ -95,14 +153,42 @@ check(Header) ->
 %%% @doc
 %%%     Parsing material for json and html 
 %%% @end
+%% {struct,[{"total_count",763},
+%%          {"incomplete_results",false},
+%%          {"items",
+%%           {array,[{struct,[{"id",374927},
+%%                            {"name","otp"},
+%%                            {"full_name","erlang/otp"},
+%%                            {"owner",
+%%                             {struct,[{"login","erlang"},
+%%                                      {"id",153393},
+%% ...
 
-parse({struct,[{_,0},{_,{array, _List}}]}) ->
-    no_result;
-parse({struct,[{_,_X},{_,{array, List}}]}) ->
-    List;
+parse({struct,Struct}) ->
+    case lists:keysearch("total_count",1,Struct) of
+        false ->
+            {error,json_failed};
+        {value,{_,0}} ->    
+            no_result;
+        {value,{_,_N}} ->
+            case lists:keysearch("items",1,Struct) of
+                false ->
+                    {error,json_failed};
+                {value,{_,{array,List}}} ->
+                    List;
+                _Result ->
+                    {error,json_failed}
+            end
+    end;
+
+%% % parse({struct,[{_,0},{_,{array, _List}}]}) ->
+%% parse({struct,[{_,0},_,{_,{array, _List}}]}) ->
+%%     no_result;
+%% % parse({struct,[{_,_X},{_,{array, List}}]}) ->
+%% parse({struct,[{_,_X},_,{_,{array, List}}]}) ->
+%%     List;
 parse(_) ->
     {error,json_failed}.
-
 
 extract(git, {struct, List}) ->
     #git{id = proplists:get_value("id",List),
@@ -135,14 +221,20 @@ extract(google , [Name_Link, _ , Star_Data , _ , DescT|_]) ->
     [{_,Attrs,Val}] = get_value([Name_Link], "a", []),
     case Star_Data of
 	{_,_,[Updated,{_,_,[Stars]}]} ->
-	    Desc = DescT;
+	    DescIn = DescT;
 	{_,_,[Updated|_]} ->
 	    Stars = <<"0">>,
-	    Desc = DescT;
+	    DescIn = DescT;
 	X ->
 	    Stars = <<"0">>,
 	    Updated = <<"undef">>,
-	    Desc = X
+	    DescIn = X
+    end,
+    Desc = case DescIn of
+        D when is_bitstring(D) == true -> D;
+        [] -> <<"undef">>;
+        _D1 ->  %% error_logger:info_report(["Desc ",{desc,_D1}]),
+                   <<"undef">>
     end,
     Html_Url = proplists:get_value(<<"href">>,Attrs),
     Full_Name = hd(Val),
@@ -174,8 +266,8 @@ extract(sfapi, {struct,[{_,{struct,List}}]}) ->
 	 created_at = C,
 	 watchers = 0};
 extract(bbapi, {struct, List}) ->
-%name,full_name, owner, html_url, description, languages,  created_at,
-%updated_at,  watchers , forks
+                                                %name,full_name, owner, html_url, description, languages,  created_at,
+                                                %updated_at,  watchers , forks
     Name = proplists:get_value("slug",List),
     Owner = proplists:get_value("owner",List),
     #git{id = 2,
@@ -204,26 +296,33 @@ extract_owner({struct, List}) ->
 %%% @doc
 %%%     A Link generator for different sources
 %%% @end
-
-
 source_gen({{Year,Month,_},_}) ->
-    source_gen(2010,1,Year,Month,[{l,"<2010"},{s,"<2010"}]).
+     [bitbucket,sourceforge,google]++
+         source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
+%% source_gen({{Year,Month,_},_}) ->
+%%    source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
 source_gen(Y,M,Y,M,Buff)->
-    Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}, 
-	     google,sourceforge, bitbucket];
+    Buff ++ [{l,">"++date_format(Y,M)},{s,">"++date_format(Y,M)}]; 
+	     
+
+%% temporary fix to test exit erlproject_unit after the last item is parsed
+%% source_gen({{Year,Month,_},_}) ->
+%%     [sourceforge,bitbucket].
+
+
 source_gen(Y,12,TY,TM,Buff) ->
     source_gen(Y+1,1,TY,TM,Buff ++ 
-		 [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
-		  {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
+                   [{l,date_format(Y,12)++".."++date_format(Y+1,1)},
+                    {s,date_format(Y,12)++".."++date_format(Y+1,1)}]);
 source_gen(Y,M,TY,TM,Buff) ->
     source_gen(Y,M+1,TY,TM,Buff ++ 
 		   [{l,date_format(Y,M)++".."++date_format(Y,M+1)},
 		    {s,date_format(Y,M)++".."++date_format(Y,M+1)}]).
 
 date_format(Y,M) when M < 10->
-    integer_to_list(Y)++"-"++integer_to_list(0)++integer_to_list(M);
+    integer_to_list(Y)++"-"++integer_to_list(0)++integer_to_list(M)++"-01";
 date_format(Y,M) ->
-    integer_to_list(Y)++"-"++integer_to_list(M).
+    integer_to_list(Y)++"-"++integer_to_list(M)++"-01".
 
 
 
@@ -319,12 +418,12 @@ get_content([{_,Attr,_} | T] , Filter , Value , Buff) ->
 
 get_content([],_,_ , Buff) ->
     Buff. 
-						     
+
 
 pull_content([{Key,Val}|T] , FKey) ->
     case bitstring_to_list(Key) == FKey of
 	true ->
-	   bitstring_to_list(Val);
+            bitstring_to_list(Val);
 	false ->
 	    pull_content(T,FKey)
     end;
@@ -402,3 +501,53 @@ month_num("Dec") ->
     12;
 month_num(_) ->
     0.
+
+connect() ->
+   case whereis(erlproject_cunit) of
+       undefined -> 
+                                                % initial start don't need to do anything
+           ok;
+       _Pid -> 
+                                                % erlproject_db was crashed -> 
+                                                %  if parser crashed as well it needs to be restarted
+           ?Log("send continue_parsing message",[]),
+           timer:sleep(1000), 
+                                                %% wait a bit while mysql can be up again
+           gen_server:cast(erlproject_cunit, {continue_parsing})
+   end,
+
+   ?Log("erlproject_db:connect",[]),
+     %% start creates a gen_server process which is not
+     %% part of a supervision tree
+    try 
+        case emysql:add_pool(p1, 1,  ?USER, ?PWD, ?HOST, ?PORT,?PROJECT, utf8) of
+            ok ->  {ok, whereis(emysql_conn_mgr)};
+            {reply, ok, _ } ->
+                {ok, whereis(emysql_conn_mgr)};
+            {reply, {error, pool_already_exists}, _} ->
+                {error, already_started};
+            {error,pool_already_exist} ->
+                {ok, whereis(emysql_conn_mgr)};
+            {_,Reason} -> {error,Reason}
+        end
+    catch
+        exit:pool_already_exists ->
+            {ok,  whereis(emysql_conn_mgr)}
+    end.
+
+            
+                
+%% Return a list of all tcp sockets
+tcp_sockets() -> port_list("tcp_inet").
+udp_sockets() -> port_list("udp_inet").
+sctp_sockets() -> port_list("sctp_inet").
+
+%% Return all ports having the name 'Name'
+port_list(Name) ->
+    lists:filter(
+      fun(Port) ->
+	      case erlang:port_info(Port, name) of
+		  {name, Name} -> true;
+		  _ -> false
+	      end
+      end, erlang:ports()).
