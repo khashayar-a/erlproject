@@ -206,7 +206,7 @@ parse(sourceforge, Links) ->
 %% lists:foreach(Spawn, Res);    
 
 parse(sfapi,Body) ->
-    case erlproject_funs:extract(sfapi, mochijson:decode(Body)) of
+    case erlproject_funs:extract(sfapi, decode_body(Body)) of
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, sfapi,  Data}); 
 	_Reason ->
@@ -229,7 +229,7 @@ parse(bitbucket, Links) ->
     lists:foreach(Spawn, Res);
 
 parse(bbapi,Body) ->
-    case erlproject_funs:extract(bbapi, mochijson:decode(Body)) of
+    case erlproject_funs:extract(bbapi, decode_body(Body)) of
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, bbapi,  Data}); 
 	_Reason ->
@@ -238,7 +238,15 @@ parse(bbapi,Body) ->
 
     end.
 
-
+%% error in mochijson:decode crashed the process
+%% while erlproject_funs:extract function expected it to return
+decode_body(Body) ->
+    try mochijson:decode(Body)
+    catch
+	Class:Error ->
+	    lager:warning("Error in mochijson:decode ~p ~p ~p", [Class, Error, erlang: get_stacktrace()]),
+	    not_valid
+    end.
 
 commiter(List) ->
     commiter(List, 1).
