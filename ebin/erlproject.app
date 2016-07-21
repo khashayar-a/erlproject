@@ -9,4 +9,4 @@
                         erlproject_funs,erlproject_git_parser,
                         erlproject_parser,erlproject_sup,
                         erlproject_supervisor,mochijson,mochiutf8,
-                        mochiweb_charref,mochiweb_html,test]}]}.
+                        mochiweb_charref,mochiweb_html]}]}.

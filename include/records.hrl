@@ -7,17 +7,17 @@
 
 -record(commit, {sha, author, date, url, message}).
 
- - ifdef(debug1).
+- ifdef(debug1).
 - define(L(Msg,Parameters), error_logger:info_report([Msg,Parameters])).
- - else.
- - define(L(Msg,Parameters), ok).
+- else.
+- define(L(Msg,Parameters), ok).
 - endif.
 
- - ifdef(debug1).
+- ifdef(debug1).
 - define( Log(Msg,Parameters), error_logger:info_report([Msg,Parameters])).
- - else.
- - define( Log(Msg,Parameters), ok).
- - endif.
+- else.
+- define( Log(Msg,Parameters), ok).
+- endif.
 
 -define(SOURCEFORGE_OVERLOAD, "Too many requests, please try again later.").
 %% Khashayar's token
@@ -29,6 +29,6 @@
 
 -define(HOST, "127.0.0.1").
 -define(PORT, 3306).
--define(USER, "evabihari").
--define(PWD,"ethebi1").
--define(PROJECT,"erlproject").
+-define(USER, "ecentral_adm").
+-define(PWD,"9!P#^H2x0a-1K5").
+-define(PROJECT,"erlangcentral_db").

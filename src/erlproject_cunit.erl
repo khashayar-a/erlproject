@@ -182,17 +182,15 @@ gen_url(google) ->
      "https://code.google.com/hosting/search?"++
 	 "q=label%3Aerlang&filter=0&mode=&start=0"};
 gen_url({l,C}) ->
-    Auth = "&access_token=" ++ ?GITHUB_ACCESS_TOKEN,
     Page = "&page=1&per_page=100", 
     Src = "https://api.github.com/search/repositories",
     Query = "?q=language:erlang+created:",
-    {git,Src ++ Query ++ C ++ Page ++ Auth};
+    {git,Src ++ Query ++ C ++ Page};
 gen_url({s,C}) ->
-    Auth = "&access_token=" ++ ?GITHUB_ACCESS_TOKEN,
     Page = "&page=1&per_page=100",
     Src = "https://api.github.com/search/repositories",
     Query = "?q=erlang+created:",
-    {git,Src ++ Query ++ C ++ Page ++ Auth}.
+    {git,Src ++ Query ++ C ++ Page}.
 
 epoch_now() ->
     calendar:datetime_to_gregorian_seconds(calendar:universal_time())

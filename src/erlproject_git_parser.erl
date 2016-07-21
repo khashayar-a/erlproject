@@ -44,7 +44,6 @@ crawl(From,{git, Url}) ->
     end.
 
 parse(git, List) ->
-    Auth = "?access_token=" ++ ?GITHUB_ACCESS_TOKEN,
     Extract = fun(X) -> 
 		      erlproject_funs:extract(git,X) 
 	      end, 
@@ -63,9 +62,9 @@ parse(git, List) ->
                        end,
                    case R of
                        true ->
-                           Languages = X#git.languages_url ++ Auth,
+                           Languages = X#git.languages_url,
                            Commits = hd(string:tokens(X#git.commits_url, "{")) 
-                               ++ Auth ++ "&per_page=3",
+                               ++ "&per_page=3",
                            gen_server:cast(erlproject_db,{write, git,  X}),
                            {Languages, Commits};
                        _ -> {[],[]}

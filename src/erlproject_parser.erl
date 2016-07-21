@@ -17,8 +17,10 @@
 
 -include("records.hrl").
 
+-define(SOURCEFORGE_PROJECT_API, "http://sourceforge.net/rest/p/").
+
 start(Url) ->
-    %%    ?L("spawn(erlproject_parser) ",[{url, Url}]),
+    ?L("spawn(erlproject_parser) ",[{url, Url}]),
     spawn(erlproject_parser, init, [Url]).
 
 init({Source,Url}) ->
@@ -83,7 +85,7 @@ crawl(google, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;
 crawl(sourceforge, Url) ->
-    %% error_logger:info_report(["crawl sourceforge", {url, Url}]),
+    error_logger:info_report(["crawl sourceforge", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
         {success,{_Headers, ?SOURCEFORGE_OVERLOAD}} ->
             %% "Too many requests, please try again later."
@@ -93,6 +95,7 @@ crawl(sourceforge, Url) ->
 	{success,{_Headers,Body}} ->
 	    Html = mochiweb_html:parse(Body),
 	    Links = erlproject_funs:get_value([Html], "a", []),
+            io:format("~nUrl = ~p.~n", [Url]),
 	    parse(sourceforge,Links),
 	    case erlproject_funs:grab_next(sf, Links) of
 		last ->
@@ -109,11 +112,14 @@ crawl(sfapi,Url) ->
     %%  error_logger:info_report(["crawl sfapi", {url, Url}]),
     case erlproject_funs:read_web(default,Url) of
         {success,{_Headers, ?SOURCEFORGE_OVERLOAD}} ->
+            io:format("~nsuccess = ~p.~n", [overload]),
             %% "Too many requests, please try again later."
             %% Skip sourceforge until the next iteration
             Reason = "sourceforge overloaded",    
             gen_server:cast(erlproject_cunit, {error, {Reason,Url}});
 	{success,{_Headers,Body}} ->
+            io:format("~nURL = ~p.~n", [Url]),
+            io:format("~nsuccess = ~p.~n", [Body]),
             parse(sfapi,Body);
         {error, Reason} ->
             gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
@@ -191,12 +197,13 @@ parse(sourceforge, Links) ->
     Projects = erlproject_funs:get_content(Links,
 					   {"class" ,"project-icon"},
 					   "href"),
+    io:format("~nProjects = ~p.~n", [Projects]),
     Extract = fun(X) ->
 		      Name =lists:nth(2, string:tokens(X,"/")),
-		      "http://sourceforge.net/api/project/name/" ++
-			  Name ++ "/json"
+                      sourceforge_project_link(Name)
 	      end,
     Res = lists:map(Extract,Projects),
+    io:format("~nRes = ~p.~n", [Res]),
     crawl_sfapi_projects(Res);
 %% Spawn = fun(X) ->
 %%                 %%% wait a bit to avoid massive process storm
@@ -265,3 +272,7 @@ crawl_sfapi_projects([X|Rem]) ->
                             %% there is no need for a new project, 
                             %% just crawl it
     crawl_sfapi_projects(Rem).
+
+%% internal functions
+sourceforge_project_link(Name) ->
+     ?SOURCEFORGE_PROJECT_API ++ Name.

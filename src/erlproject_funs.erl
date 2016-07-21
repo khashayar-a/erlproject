@@ -297,7 +297,7 @@ extract_owner({struct, List}) ->
 %%%     A Link generator for different sources
 %%% @end
 source_gen({{Year,Month,_},_}) ->
-     [bitbucket,sourceforge,google]++
+     [bitbucket,google]++
          source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
 %% source_gen({{Year,Month,_},_}) ->
 %%    source_gen(2010,1,Year,Month,[{l,"<2010-01-01"},{s,"<2010-01-01"}]).
