@@ -1,0 +1,19 @@
+%% -*- erlang -*-
+MaybeAppsDir = filename:dirname(rebar_utils:get_cwd()),
+case filename:basename(MaybeAppsDir) of
+    "apps" ->
+        %% Global config used from an app:
+        %% - remove `sub_dirs'
+        %% - insert `deps_dir' (with absolute path!)
+        %% - change `lib_dirs'
+        DepsDir = filename:join(filename:dirname(MaybeAppsDir), "deps"),
+        [{deps_dir, DepsDir},
+         {lib_dirs, [MaybeAppsDir]} |
+         [{Key, Val}
+          || {Key, Val} <- CONFIG,
+             not lists:member(Key, [deps_dir, lib_dirs, sub_dirs])]
+        ];
+    _Other ->
+        %% Do not modify the config
+        CONFIG
+end.

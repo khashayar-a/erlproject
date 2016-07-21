@@ -1,0 +1,7 @@
+2016-06-17 11:36:23.604 [info] <0.6.0> Application lager started on node 'erlproject@p-srv-http02.erlang-solutions.com'
+2016-06-17 11:36:23.681 [info] <0.6.0> Application crypto started on node 'erlproject@p-srv-http02.erlang-solutions.com'
+2016-06-17 11:36:23.974 [info] <0.6.0> Application emysql started on node 'erlproject@p-srv-http02.erlang-solutions.com'
+2016-06-17 11:36:24.434 [info] <0.78.0> erlproject_db:connect
+2016-06-17 11:36:24.442 [error] <0.78.0> CRASH REPORT Process erlproject_db with 0 neighbours exited with reason: bad return value: {failed_to_connect_to_database,econnrefused} in gen_server:init_it/6 line 332
+2016-06-17 11:36:28.006 [error] <0.65.0> Supervisor erlproject_sup had child erlproject_db started with erlproject_db:start_link() at undefined exit with reason bad return value: {failed_to_connect_to_database,econnrefused} in context start_error
+2016-06-17 11:36:28.006 [info] <0.6.0> Application erlproject exited with reason: {shutdown,{erlproject_app,start,[normal,[]]}}

@@ -1,8 +1,12 @@
-{application, erlproject,
- [{vsn, "1.0.0"},
-  {modules, [erlproject_app, erlproject_db, erlproject_funs, 
-  erlproject_cunit, erlproject_parser, erlproject_supervisor,     
-   mochijson, mysql_auth, mysql_conn, mysql_recv, mysql]},
-  {registered, [erlproject]},
-  {mod, {erlproject_app, []}}
- ]}.
+{application,erlproject,
+             [{description,"Erlang project crawler"},
+              {vsn,"1"},
+              {registered,[]},
+              {applications,[kernel,stdlib]},
+              {mod,{erlproject_app,[]}},
+              {env,[]},
+              {modules,[erlproject_app,erlproject_cunit,erlproject_db,
+                        erlproject_funs,erlproject_git_parser,
+                        erlproject_parser,erlproject_sup,
+                        erlproject_supervisor,mochijson,mochiutf8,
+                        mochiweb_charref,mochiweb_html]}]}.

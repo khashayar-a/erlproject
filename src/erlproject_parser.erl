@@ -17,27 +17,18 @@
 
 -include("records.hrl").
 
+-define(SOURCEFORGE_PROJECT_API, "http://sourceforge.net/rest/p/").
+
 start(Url) ->
+    ?L("spawn(erlproject_parser) ",[{url, Url}]),
     spawn(erlproject_parser, init, [Url]).
 
 init({Source,Url}) ->
+    ?Log("erlproject_parser:init",[{source, Source}]),
     crawl(Source,Url).
-
 crawl(git, Url) ->
-    case erlproject_funs:read_web(git,Url) of
-	{limit, T} ->
-	    gen_server:cast(erlproject_cunit, {wait, T, {git,Url}}); 
-	{success, last, List} ->
-    	    gen_server:cast(erlproject_cunit, last),
-	    parse(git, List);
-	{success, Next, List} ->
-	    gen_server:cast(erlproject_cunit, {next, {git,Next}}),
-	    parse(git, List);
-	{error,Reason} ->
-	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}});
-	_ ->
-	    io:format("SOMETHING IS HAPPENING ~p~n" , [Url])
-    end;
+    erlproject_git_parser:start(Url);
+
 crawl(git_language, Url) ->
     case erlproject_funs:read_web(default,Url) of
 	{success,{Headers,Body}} ->
@@ -58,6 +49,7 @@ crawl(git_language, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;    
 crawl(git_commit, Url) ->
+    ?Log("crawl git_commit", [{url, Url}]),
     case erlproject_funs:read_web(default,Url) of
 	{success,{Headers,Body}} ->
 	    case erlproject_funs:check(Headers) of 
@@ -75,6 +67,8 @@ crawl(git_commit, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;    
 crawl(google, Url) ->
+    %%   error_logger:info_report(["crawl google", {url, Url}]),
+
     case erlproject_funs:read_web(default,Url) of
 	{success,{_Headers,Body}} ->
 	    Html = mochiweb_html:parse(Body),
@@ -91,30 +85,48 @@ crawl(google, Url) ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
     end;
 crawl(sourceforge, Url) ->
-     case erlproject_funs:read_web(default,Url) of
+    error_logger:info_report(["crawl sourceforge", {url, Url}]),
+    case erlproject_funs:read_web(default,Url) of
+        {success,{_Headers, ?SOURCEFORGE_OVERLOAD}} ->
+            %% "Too many requests, please try again later."
+            %% Skip sourceforge until the next iteration
+            Reason = "sourceforge overloaded",    
+            gen_server:cast(erlproject_cunit, {error, {Reason,Url}});
 	{success,{_Headers,Body}} ->
 	    Html = mochiweb_html:parse(Body),
 	    Links = erlproject_funs:get_value([Html], "a", []),
+            io:format("~nUrl = ~p.~n", [Url]),
+	    parse(sourceforge,Links),
 	    case erlproject_funs:grab_next(sf, Links) of
 		last ->
 		    gen_server:cast(erlproject_cunit, last);
 		Next ->
+                    timer:sleep(500), %% wait a bit to avoid massive storm
 		    gen_server:cast(erlproject_cunit, 
 				    {next, {sourceforge,Next}})
-	    end,
-	    parse(sourceforge,Links);
+            end;
 	{error, Reason} ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
-     end;
+    end;
 crawl(sfapi,Url) ->
-     case erlproject_funs:read_web(default,Url) of
+    %%  error_logger:info_report(["crawl sfapi", {url, Url}]),
+    case erlproject_funs:read_web(default,Url) of
+        {success,{_Headers, ?SOURCEFORGE_OVERLOAD}} ->
+            io:format("~nsuccess = ~p.~n", [overload]),
+            %% "Too many requests, please try again later."
+            %% Skip sourceforge until the next iteration
+            Reason = "sourceforge overloaded",    
+            gen_server:cast(erlproject_cunit, {error, {Reason,Url}});
 	{success,{_Headers,Body}} ->
-	     parse(sfapi,Body);
-	 {error, Reason} ->
-	     gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
-     end;
+            io:format("~nURL = ~p.~n", [Url]),
+            io:format("~nsuccess = ~p.~n", [Body]),
+            parse(sfapi,Body);
+        {error, Reason} ->
+            gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
+    end;
 crawl(bitbucket, Url) ->
-     case erlproject_funs:read_web(default,Url) of
+    %%  error_logger:info_report(["crawl bitbucket", {url, Url}]),
+    case erlproject_funs:read_web(default,Url) of
 	{success,{_Headers,Body}} ->
 	    Html = mochiweb_html:parse(Body),
 	    Links = erlproject_funs:get_value([Html], "a", []),
@@ -128,32 +140,34 @@ crawl(bitbucket, Url) ->
 	    parse(bitbucket, Links);
 	{error, Reason} ->
 	    gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
-     end;
+    end;
 crawl(bbapi,Url) ->
-     case erlproject_funs:read_web(default,Url) of
-	 {success,{_Headers,Body}} ->
-	     parse(bbapi,Body);
-	 {error, Reason} ->
-	     gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
-     end.
-	 
-parse(git, List) ->
-    Auth = "?access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
-    Extract = fun(X) -> 
-		      erlproject_funs:extract(git,X) 
-	      end, 
-    Res = lists:map(Extract , List),
-    Cast = fun(X) -> 
-		   Languages = X#git.languages_url ++ Auth,
-		   Commits = hd(string:tokens(X#git.commits_url, "{")) 
-					   ++ Auth ++ "&per_page=3",
-		   gen_server:cast(erlproject_cunit, 
-				   {language, {git_language, Languages}}),
-		   gen_server:cast(erlproject_cunit, 
-				   {commit, {git_commit, Commits}}),
-		   gen_server:cast(erlproject_db,{write, git,  X}) 
-	   end,
-    lists:foreach(Cast, Res);
+    %%  error_logger:info_report(["crawl bbapi", {url, Url}]),
+    case erlproject_funs:read_web(default,Url) of
+        {success,{_Headers,Body}} ->
+            parse(bbapi,Body);
+        {error, Reason} ->
+            gen_server:cast(erlproject_cunit, {error, {Reason,Url}})
+    end.
+
+%% parse(git, List) ->
+%%     %% Auth = "?access_token=e62fdebb6e20c178dd30febcc7126e06367dd975",
+%%     Auth = "?access_token=" ++ ?GITHUB_ACCESS_TOKEN,
+%%     Extract = fun(X) -> 
+%% 		      erlproject_funs:extract(git,X) 
+%% 	      end, 
+%%     Res = lists:map(Extract , List),
+%%     Cast = fun(X) -> 
+%% 		   Languages = X#git.languages_url ++ Auth,
+%% 		   Commits = hd(string:tokens(X#git.commits_url, "{")) 
+%%                        ++ Auth ++ "&per_page=3",
+%% 		   gen_server:cast(erlproject_cunit, 
+%% 				   {language, {git_language, Languages}}),
+%% 		   gen_server:cast(erlproject_cunit, 
+%% 				   {commit, {git_commit, Commits}}),
+%% 		   gen_server:cast(erlproject_db,{write, git,  X}) 
+%% 	   end,
+%%     lists:foreach(Cast, Res);
 
 parse(git_commit, List) ->
     Extract = fun(X) ->
@@ -183,24 +197,28 @@ parse(sourceforge, Links) ->
     Projects = erlproject_funs:get_content(Links,
 					   {"class" ,"project-icon"},
 					   "href"),
+    io:format("~nProjects = ~p.~n", [Projects]),
     Extract = fun(X) ->
 		      Name =lists:nth(2, string:tokens(X,"/")),
-		      "http://sourceforge.net/api/project/name/" ++
-			  Name ++ "/json"
+                      sourceforge_project_link(Name)
 	      end,
     Res = lists:map(Extract,Projects),
-    Spawn = fun(X) ->
-		    erlproject_parser:start({sfapi,X})
-	    end,
-    lists:foreach(Spawn, Res);
+    io:format("~nRes = ~p.~n", [Res]),
+    crawl_sfapi_projects(Res);
+%% Spawn = fun(X) ->
+%%                 %%% wait a bit to avoid massive process storm
+%%                 timer:sleep(1000),
+%%                 erlproject_parser:start({sfapi,X})
+%%         end,
+%% lists:foreach(Spawn, Res);    
 
 parse(sfapi,Body) ->
-    case erlproject_funs:extract(sfapi, mochijson:decode(Body)) of
+    case erlproject_funs:extract(sfapi, decode_body(Body)) of
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, sfapi,  Data}); 
-	Reason ->
-	    error_logger:info_report(["Pasing SF MOCHI",
-				      {reason,Reason}])	   
+	_Reason ->
+	    ?Log("Parsing SF MOCHI",
+                 [{reason,_Reason},{body,mochijson:decode(Body)} ])	   
 
     end;
 
@@ -209,8 +227,7 @@ parse(bitbucket, Links) ->
 					   {"class" ,"avatar-link"},
 					   "href"),
     Extract = fun(X) ->
-		      "https://bitbucket.org/api/1.0/repositories" ++
-			  X
+		      "https://bitbucket.org/api/1.0/repositories" ++ X
 	      end,
     Res = lists:map(Extract,Projects),
     Spawn = fun(X) ->
@@ -219,16 +236,24 @@ parse(bitbucket, Links) ->
     lists:foreach(Spawn, Res);
 
 parse(bbapi,Body) ->
-    case erlproject_funs:extract(bbapi, mochijson:decode(Body)) of
+    case erlproject_funs:extract(bbapi, decode_body(Body)) of
 	Data = #git{} ->
 	    gen_server:cast(erlproject_db, {write, bbapi,  Data}); 
-	Reason ->
-	    error_logger:info_report(["Pasing BB MOCHI",
-				      {reason,Reason}])	   
+	_Reason ->
+	    ?Log("Parsing BB MOCHI",
+                 [{reason,_Reason},{body,mochijson:decode(Body)}])	   
 
     end.
 
-
+%% error in mochijson:decode crashed the process
+%% while erlproject_funs:extract function expected it to return
+decode_body(Body) ->
+    try mochijson:decode(Body)
+    catch
+	Class:Error ->
+	    lager:warning("Error in mochijson:decode ~p ~p ~p", [Class, Error, erlang: get_stacktrace()]),
+	    not_valid
+    end.
 
 commiter(List) ->
     commiter(List, 1).
@@ -239,6 +264,15 @@ commiter([H|T],N) ->
     gen_server:cast(erlproject_db, 
 		    {write, git_commit, {N,H}}),
     commiter(T,N+1).
-	
 
 
+crawl_sfapi_projects([]) -> ok;
+crawl_sfapi_projects([X|Rem]) ->
+    erlproject_parser:crawl(sfapi,X),
+                            %% there is no need for a new project, 
+                            %% just crawl it
+    crawl_sfapi_projects(Rem).
+
+%% internal functions
+sourceforge_project_link(Name) ->
+     ?SOURCEFORGE_PROJECT_API ++ Name.
